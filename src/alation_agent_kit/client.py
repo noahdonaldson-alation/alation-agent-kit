@@ -80,6 +80,34 @@ class AlationClient:
             raise AlationError(method, url, resp.status_code, payload)
         return payload
 
+    # -- streaming ---------------------------------------------------------
+    def stream_lines(self, path: str, json_body: Any = None, timeout: int = 600):
+        """POST and yield raw SSE lines.
+
+        Used for agent invocation. The task-polling alternative is unusable:
+        `GET /task/{id}` returns 404 once the task succeeds ("Successfully
+        completed tasks are deleted"), so a fast agent finishes before the first
+        poll and looks like a failure.
+        """
+        url = f"{self.s.base_url}{path}"
+        headers = self._headers({"Accept": "text/event-stream"})
+        with self._session.post(
+            url, json=json_body, headers=headers, timeout=timeout, stream=True
+        ) as resp:
+            if resp.status_code == 401:
+                self._tokens.token(force_refresh=True)
+                headers = self._headers({"Accept": "text/event-stream"})
+                with self._session.post(
+                    url, json=json_body, headers=headers, timeout=timeout, stream=True
+                ) as retry:
+                    if not retry.ok:
+                        raise AlationError("POST", url, retry.status_code, retry.text[:500])
+                    yield from retry.iter_lines(decode_unicode=True)
+                    return
+            if not resp.ok:
+                raise AlationError("POST", url, resp.status_code, resp.text[:500])
+            yield from resp.iter_lines(decode_unicode=True)
+
     # -- convenience -------------------------------------------------------
     def get(self, path: str, **kw) -> Any:
         return self.request("GET", path, **kw)

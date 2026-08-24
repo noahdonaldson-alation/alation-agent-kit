@@ -18,7 +18,7 @@ from pathlib import Path
 from .agents import AgentStudio
 from .auth import Settings, load_dotenv
 from .client import AI_V1, AlationClient
-from .invoke import extract_text, run_agent
+from .invoke import extract_text, run_agent, run_agent_stream
 from .prompts import list_prompts, load_prompt, sync_prompt_into_agent
 from .store import read_json, write_json
 
@@ -124,14 +124,23 @@ def cmd_run(args) -> int:
             key, _, val = kv.partition("=")
             payload[key] = val
 
-    result = run_agent(st.c, agent_id, payload, verbose=args.verbose)
-    text = extract_text(result)
-    print(text if text else json.dumps(result, indent=2)[:4000])
+    if args.poll:
+        # Legacy path. Kept for diagnosis only — the API deletes tasks on
+        # success, so this usually cannot retrieve output.
+        result = run_agent(st.c, agent_id, payload, verbose=args.verbose)
+        text = extract_text(result) or json.dumps(result, indent=2)
+    else:
+        raw_path = f"{args.output}.raw-stream.txt" if (args.raw and args.output) else None
+        text = run_agent_stream(
+            st.c, agent_id, payload, verbose=args.verbose, raw_path=raw_path
+        )
 
     if args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.output).write_text(text or json.dumps(result, indent=2))
-        print(f"\nWrote {args.output}", file=sys.stderr)
+        Path(args.output).write_text(text, encoding="utf-8")
+        print(f"Wrote {args.output}  ({len(text):,} chars)")
+    else:
+        print(text)
     return 0
 
 
@@ -172,7 +181,11 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--input-file", help="File whose text is appended to the message")
     pr.add_argument("--param", action="append", help="Extra input param, key=value")
     pr.add_argument("-o", "--output")
-    pr.add_argument("-v", "--verbose", action="store_true")
+    pr.add_argument("-v", "--verbose", action="store_true", help="Echo raw SSE lines")
+    pr.add_argument("--raw", action="store_true",
+                    help="Also save the raw SSE stream next to --output (for debugging)")
+    pr.add_argument("--poll", action="store_true",
+                    help="Use the legacy /call + task-polling path (usually 404s on success)")
     pr.set_defaults(func=cmd_run)
 
     sub.add_parser("prompts").set_defaults(func=cmd_prompts)
