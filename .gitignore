@@ -1,0 +1,30 @@
+# Secrets — never commit
+.env
+*.pem
+*.key
+
+# Token cache (also lives in ~/.alation by default, but just in case)
+.token_cache.json
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Extracted source text and generated output — regenerate, don't commit
+# (remove these two lines if you decide the artifacts ARE the deliverable)
+artifacts/**/*.txt
+artifacts/**/*.raw.json
+
+# OS
+.DS_Store

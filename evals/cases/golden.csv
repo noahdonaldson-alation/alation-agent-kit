@@ -1,0 +1,6 @@
+principle_text,__expected1,__expected2
+file://../../artifacts/bcbs239/principle_02.txt,"javascript:JSON.parse(output).catalog_addressability === 'direct'","javascript:JSON.parse(output).principle_number === 2"
+file://../../artifacts/bcbs239/principle_03.txt,"javascript:JSON.parse(output).catalog_addressability === 'direct'","javascript:(JSON.parse(output).proposed_objects||[]).some(o => o.kind === 'policy')"
+file://../../artifacts/bcbs239/principle_05.txt,"javascript:JSON.parse(output).catalog_addressability === 'evidence_only'","javascript:(JSON.parse(output).unaddressed_by_catalog||[]).length > 0"
+file://../../artifacts/bcbs239/principle_09.txt,"javascript:JSON.parse(output).catalog_addressability === 'out_of_scope'","javascript:JSON.parse(output).audience === 'bank'"
+file://../../artifacts/bcbs239/principle_12.txt,"javascript:JSON.parse(output).audience === 'supervisor'","javascript:(JSON.parse(output).proposed_objects||[]).length === 0"

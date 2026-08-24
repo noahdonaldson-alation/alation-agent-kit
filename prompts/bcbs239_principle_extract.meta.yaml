@@ -1,0 +1,42 @@
+name: bcbs239_principle_extract
+purpose: >
+  Convert one BCBS 239 principle into proposed Alation governance objects,
+  with honest scope classification and paragraph-level traceability.
+
+# Rendered into the agent's `prompt` field on deploy.
+target_agent: bcbs239_interpreter
+
+# Pin the model. Agent Studio pins via the model_name string; keep local and
+# deployed identical so behaviour is comparable across the two gates.
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+
+# Deploy-time template variables rendered into the prompt body. Empty by
+# design — this prompt is a system prompt and must deploy byte-identical to what
+# was tested locally.
+deploy_variables: {}
+
+output:
+  format: json
+  schema: schemas/policy_proposal.schema.json
+
+# The principle text is a RUNTIME input, not a template variable. It arrives as
+# the agent's `message` parameter because Agent Studio has no PDF ingestion and
+# no prompt templating. Alation unstructured-data ingestion is the intended
+# path later, which will replace the local extraction step only — the prompt
+# and its input contract stay the same.
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  produced_by: scripts/extract_bcbs239.py
+  chunking: one principle per run   # guards against 413 context-window errors
+  future: alation unstructured data ingestion
+
+changelog:
+  - version: 0.1.0
+    date: 2026-08-24
+    note: >
+      Initial draft. Dependency chain (policy -> overlay standard -> cde ->
+      dq_monitor) and the three-way addressability classification are the load-
+      bearing parts; revise those before touching tone.

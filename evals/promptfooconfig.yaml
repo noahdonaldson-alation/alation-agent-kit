@@ -1,0 +1,82 @@
+# promptfoo — local prompt regression harness.
+#   npx promptfoo@latest eval -c evals/promptfooconfig.yaml
+#   npx promptfoo@latest view
+#
+# Gate 1 (this file): iterate locally against the raw model API. Fast, cheap.
+# Gate 2 (providers section below, commented): re-run the SAME cases against the
+# deployed Agent Studio agent, because local testing has none of Studio's
+# scaffolding and a prompt can behave differently there.
+
+description: BCBS 239 principle extraction
+
+# The system prompt file is variable-free so it deploys byte-identical to what
+# is tested here. This chat wrapper supplies it as `system` and the principle
+# chunk as the user message — mirroring how Agent Studio delivers input.
+prompts:
+  - file://prompt_chat.json
+
+# `system_prompt` is loaded from the same file that gets deployed. Keep this
+# pointing at the real prompt; never inline a copy.
+defaultTest_vars: &shared_vars
+  system_prompt: file://../prompts/bcbs239_principle_extract.md
+
+providers:
+  - id: anthropic:messages:claude-sonnet-4-6
+    config:
+      max_tokens: 4096
+
+  # --- Gate 2: the deployed agent. Uncomment once the agent exists. ---
+  # - id: https
+  #   config:
+  #     url: '{{env.ALATION_BASE_URL}}/ai/api/v1/chats/agent/{{env.BCBS239_AGENT_ID}}/call'
+  #     method: POST
+  #     headers:
+  #       Authorization: 'Bearer {{env.ALATION_TOKEN}}'
+  #       Content-Type: application/json
+  #     body:
+  #       message: '{{principle_text}}'
+  #     # NOTE: /call is async — returns {task_id}. promptfoo cannot poll, so
+  #     # either use /stream here or wrap run_agent() in a custom provider.
+
+defaultTest:
+  vars: *shared_vars
+  assert:
+    - type: is-json
+      value:
+        file: ../schemas/policy_proposal.schema.json
+    - type: javascript
+      # Supervisor-facing principles must not propose Alation objects.
+      value: |
+        const o = JSON.parse(output);
+        if (o.audience === 'supervisor') {
+          return (o.proposed_objects || []).length === 0
+            || 'supervisor-facing principle proposed objects';
+        }
+        return true;
+    - type: javascript
+      # An overlay standard without its source policy violates Alation's model.
+      value: |
+        const o = JSON.parse(output);
+        const objs = o.proposed_objects || [];
+        const refs = new Set(objs.map(x => x.ref));
+        for (const x of objs) {
+          if (x.kind === 'cde_overlay_standard') {
+            const deps = x.depends_on || [];
+            const ok = deps.some(d => {
+              const dep = objs.find(y => y.ref === d);
+              return dep && dep.kind === 'policy';
+            });
+            if (!ok) return `overlay standard ${x.ref} has no policy dependency`;
+          }
+          for (const d of (x.depends_on || [])) {
+            if (!refs.has(d)) return `dangling depends_on: ${d}`;
+          }
+        }
+        return true;
+
+tests:
+  - file://cases/golden.csv
+
+# Model output is non-deterministic even at temperature 0, so gate on an
+# aggregate pass rate across repeats — never per-example equality.
+# Run with: npx promptfoo@latest eval --repeat 3
