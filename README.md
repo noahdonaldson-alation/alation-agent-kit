@@ -7,6 +7,12 @@ Alation instance and runs them so you can iterate from your laptop.
 First workload: interpreting **BCBS 239** and proposing the Alation governance
 objects a bank should create to demonstrate compliance.
 
+> **New here? Read [GETTING-STARTED.md](GETTING-STARTED.md).** It's the
+> step-by-step walkthrough — prerequisites, the daily iteration loop, how to add
+> an agent, PyCharm setup, and a troubleshooting table. This README covers the
+> *why*: the API hazards the code works around and the design decisions behind
+> them.
+
 ---
 
 ## Quick start
