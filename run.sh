@@ -3,8 +3,11 @@
 # no pre-existing Python needed), creates .venv, installs the package.
 #
 #   ./run.sh whoami
-#   ./run.sh list agents
-#   ./run.sh deploy agents/bcbs239_interpreter.json --prompt bcbs239_principle_extract --dry-run
+#   ./run.sh list agents|tools|llms
+#   ./run.sh deploy agents/bcbs239_cde_dq_interpreter.json \
+#       --prompt bcbs239_cde_dq_interpreter --dry-run
+#   ./run.sh run bcbs239_cde_dq_interpreter \
+#       --input-file artifacts/bcbs239/bank_principles.txt -o artifacts/out.md
 
 set -euo pipefail
 

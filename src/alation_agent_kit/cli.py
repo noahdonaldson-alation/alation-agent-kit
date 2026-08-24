@@ -1,10 +1,10 @@
 """agentkit CLI.
 
-    agentkit whoami                        # verify auth works
-    agentkit list agents|tools|llms
+    agentkit whoami                        # verify auth and token cache
+    agentkit list agents|tools|llms [--raw]
     agentkit export <agent-name> [-o agents/foo.json]
-    agentkit deploy agents/foo.json [--prompt bcbs239_principle_extract] [--dry-run]
-    agentkit run <agent-name> --message "..." [--input-file artifacts/p03.txt]
+    agentkit deploy agents/foo.json [--prompt <prompt-stem>] [--dry-run]
+    agentkit run <agent-name> [--input-file FILE] [-o out.md] [-v] [--raw]
     agentkit prompts
 """
 
