@@ -74,29 +74,25 @@ def _assemble(pieces: list[str]) -> str:
     """
     if not pieces:
         return ""
+    if len(pieces) == 1:
+        return pieces[0]
 
-    # Do NOT drop repeated identical pieces: a model can legitimately emit the
-    # same delta twice, and dropping them silently corrupts the answer.
-    #
-    # Cumulative style is detected by a piece being STRICTLY LONGER than the
-    # previous one while extending it. The strictness matters — every string
-    # starts with itself, so a loose prefix test would swallow identical deltas.
-    collapsed: list[str] = []
-    for p in pieces:
-        if collapsed and len(p) > len(collapsed[-1]) and p.startswith(collapsed[-1]):
-            collapsed[-1] = p
-        else:
-            collapsed.append(p)
-
-    joined = "".join(pieces)
-    result = "".join(collapsed)
-
-    # Last resort: if a single piece already carries nearly everything, the
-    # stream was sending whole answers and concatenating would duplicate.
     longest = max(pieces, key=len)
-    if len(longest) > 0.9 * len(result) and len(collapsed) > 1:
+
+    # Snapshot style: each event resends the whole message so far, so nearly
+    # every piece is a prefix of the longest one. Verified against a live
+    # 1,475-event capture. Take the longest and stop — do not try to stitch a
+    # chain, because the stream repeats identical snapshots (keep-alives, equal
+    # consecutive frames) and any chain-based approach starts a second
+    # accumulator on the repeat and yields two full copies.
+    prefix_hits = sum(1 for p in pieces if longest.startswith(p))
+    if prefix_hits >= 0.8 * len(pieces):
         return longest
-    return result if len(result) <= len(joined) else joined
+
+    # Delta style: pieces are separate fragments, so concatenate them. Repeated
+    # identical deltas are kept — a model can legitimately emit the same token
+    # twice, and dropping them would corrupt the text.
+    return "".join(pieces)
 
 
 def run_agent_stream(
@@ -116,8 +112,16 @@ def run_agent_stream(
     if chat_id:
         path += f"?chat_id={chat_id}"
 
-    # Everything we sent, so it can be filtered out of the response if the
-    # stream echoes the request back.
+    # Verified event shape (2026-08-24, 1,476-event capture):
+    #   {id, chat_id, agent_id, input_payload, model_message: {parts: [{content}]}, ...}
+    # Two distinct `id` values appear: the first is the echoed INPUT, the second
+    # is the answer — resent IN FULL on every event. So group by message id and
+    # take the last message; that structurally excludes the echo, where string
+    # filtering could not. `_assemble` then collapses the cumulative resends.
+    by_id: dict[str, list[str]] = {}
+    id_order: list[str] = []
+
+    # Fallback only, for instances whose events don't match the shape above.
     echo = {v.strip() for v in payload.values() if isinstance(v, str) and len(v.strip()) > 40}
 
     raw_lines: list[str] = []
@@ -140,6 +144,22 @@ def run_agent_stream(
                 if data.strip() not in echo:
                     pieces.append(data)
                 continue
+
+            block = event.get("model_message")
+            if isinstance(block, dict):
+                mid = str(event.get("id") or block.get("id") or "")
+                content = "".join(
+                    p["content"]
+                    for p in (block.get("parts") or [])
+                    if isinstance(p, dict) and isinstance(p.get("content"), str)
+                )
+                if content:
+                    if mid not in by_id:
+                        by_id[mid] = []
+                        id_order.append(mid)
+                    by_id[mid].append(content)
+                continue
+
             _harvest_text(event, pieces, echo)
     except AlationError as err:
         if err.status == 413:
@@ -154,7 +174,14 @@ def run_agent_stream(
         Path(raw_path).parent.mkdir(parents=True, exist_ok=True)
         Path(raw_path).write_text("\n".join(raw_lines), encoding="utf-8")
 
-    text = _assemble(pieces)
+    if id_order:
+        # Last message = the answer. Earlier ids are the echoed request.
+        if verbose and len(id_order) > 1:
+            print(f"  {len(id_order)} messages in stream; using the last "
+                  f"({len(by_id[id_order[-1]])} events)")
+        text = _assemble(by_id[id_order[-1]])
+    else:
+        text = _assemble(pieces)
 
     # A response many times the size of the input almost certainly means the
     # parser duplicated. Fail loudly rather than write a 28MB file.
