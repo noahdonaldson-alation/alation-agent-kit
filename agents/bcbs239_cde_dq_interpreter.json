@@ -1,0 +1,36 @@
+{
+  "$comment": "Verified against a live instance via ./run.sh export on 2026-08-24. The llm block below is the real shape: for a default LLM config the model comes from `default_llm_ref` (a composite provider:model string) and `model_name` is null — they are alternatives, not companions.",
+  "description": "Interprets BCBS 239 (Basel Committee principles for effective risk data aggregation and risk reporting) and identifies the Critical Data Elements and data quality monitoring a bank should govern. Input is the regulation text as the message; output is a markdown analysis with paragraph-level citations, criticality ratings, and catalog search terms. Interpretation only — it reads nothing from the catalog, creates nothing, and its output is a proposal for human review.",
+  "input_json_schema": {
+    "properties": {
+      "message": {
+        "description": "Text of BCBS 239, normally the bank-facing principles 1-11 from artifacts/bcbs239/bank_principles.txt. Send them together, not one principle at a time — CDEs are cross-cutting.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "type": "object"
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "llm_extra_config": null,
+  "mode": "tool_call",
+  "name": "bcbs239_cde_dq_interpreter",
+  "output_json_schema": null,
+  "parameter_bindings": [],
+  "prompt": "PLACEHOLDER — populated at deploy time from prompts/bcbs239_cde_dq_interpreter.md via `./run.sh deploy agents/bcbs239_cde_dq_interpreter.json --prompt bcbs239_cde_dq_interpreter`. Do not edit this field by hand; the .md file is the source of truth. Verified: the deployed prompt round-trips byte-identical to that file.",
+  "published_status": "draft",
+  "skill_names": [],
+  "tags": [
+    "bcbs239",
+    "cde",
+    "governance",
+    "agent-kit"
+  ],
+  "tools": []
+}

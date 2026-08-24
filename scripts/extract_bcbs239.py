@@ -70,7 +70,14 @@ def pdf_to_text(pdf_path: Path) -> str:
     try:
         from pypdf import PdfReader
     except ImportError:
-        sys.exit("pypdf is required: pip install pypdf")
+        sys.exit(
+            "pypdf is not available to this interpreter.\n\n"
+            "It's a dependency of the kit, installed in the venv — you are probably\n"
+            "running system python3. Use the venv interpreter instead:\n\n"
+            "    uv venv && uv pip install -e \".[dev]\"      # first time only\n"
+            "    .venv/bin/python scripts/extract_bcbs239.py --pdf artifacts/bcbs239.pdf\n\n"
+            "(no uv? use: python3 -m venv .venv && .venv/bin/pip install -e \".[dev]\")"
+        )
     reader = PdfReader(str(pdf_path))
     return "\n".join((page.extract_text() or "") for page in reader.pages)
 
@@ -170,11 +177,14 @@ def main() -> int:
     print(f"\nWrote {len(index)} chunks + index.json to {out_dir}")
     print(f"Wrote bank_principles.txt — P1-P11 combined, {len(bank_text):,} chars "
           f"(~{len(bank_text)//4:,} tokens)")
-    print("\nNext:")
-    print("  CDE identification (send all bank principles at once):")
-    print("    ./run.sh run bcbs239_cde_advisor --input-file artifacts/bcbs239/bank_principles.txt -o artifacts/cdes.json")
-    print("  Per-principle governance mapping (one principle at a time):")
-    print("    ./run.sh run bcbs239_interpreter --input-file artifacts/bcbs239/principle_03.txt")
+    print("\nNext: interpret it for CDE and DQ candidates.")
+    print("  System prompt: prompts/bcbs239_cde_dq_interpreter.md")
+    print("  User message:  artifacts/bcbs239/bank_principles.txt   (send it whole)")
+    print("\n  Paste both into an Agent Studio agent, or once the agent exists:")
+    print("    ./run.sh run <agent-name> \\")
+    print("      --input-file artifacts/bcbs239/bank_principles.txt \\")
+    print("      -o artifacts/cde_dq_interpretation.md")
+    print("\n  Principles 12-14 are excluded — they address supervisors, not banks.")
     return 0
 
 

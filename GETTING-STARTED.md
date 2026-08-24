@@ -90,8 +90,14 @@ Auth OK — 12 agent config(s) visible
 ## Step 3 — Prepare the regulation text 🔵
 
 ```bash
-python scripts/extract_bcbs239.py --download
+.venv/bin/python scripts/extract_bcbs239.py --download
 ```
+
+**Use the venv's interpreter, not bare `python`.** macOS ships no `python` on
+PATH — only `python3` — and `pypdf` is installed in the venv, not globally. Any
+of these work: `.venv/bin/python`, `./scripts/extract_bcbs239.py` (it has a
+shebang and is executable), or `source .venv/bin/activate` first and then plain
+`python`.
 
 Downloads BCBS 239 from bis.org and splits it into 14 per-principle files plus
 an index:
@@ -283,4 +289,5 @@ returns a `warnings` list telling you what needs manual attention.
 | `./run.sh deploy <file> [--prompt N] [--dry-run]` | Upsert an agent (`--dry-run` works offline) |
 | `./run.sh run <name> [-m msg] [--input-file f] [--param k=v] [-o out] [-v]` | Invoke and block for the result |
 | `./run.sh prompts` | List prompts with content hash and git SHA |
-| `python scripts/extract_bcbs239.py --download` | Fetch the PDF, chunk per principle, write `bank_principles.txt` |
+| `.venv/bin/python scripts/extract_bcbs239.py --download` | Fetch the PDF, chunk per principle, write `bank_principles.txt` |
+| `.venv/bin/python scripts/extract_bcbs239.py --pdf artifacts/bcbs239.pdf` | Re-chunk an already-downloaded PDF |

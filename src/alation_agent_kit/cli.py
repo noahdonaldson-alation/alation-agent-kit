@@ -44,10 +44,29 @@ def cmd_list(args) -> int:
     if not rows:
         print(f"No {args.kind} found")
         return 0
+
+    if args.raw:
+        print(json.dumps(rows, indent=2, sort_keys=True))
+        return 0
+
     for row in rows:
-        name = row.get("name") or row.get("model_name") or "(unnamed)"
-        print(f"  {row.get('id', '?'):40}  {name}")
-    print(f"\n{len(rows)} {args.kind}")
+        rid = str(row.get("id", "?"))
+        if args.kind == "llms":
+            # Same scavenging deploy uses to match a file's llm block, so what
+            # you see here is what resolution actually compares against.
+            i = llm_identity(row)
+            bits = [b for b in (i["name"], i["refs"][0] if i["refs"] else "") if b and b != i["provider"]]
+            label = f"{i['provider']}   {'  |  '.join(bits)}" if bits else i["provider"]
+            print(f"  {rid:38}  {label}")
+        else:
+            print(f"  {rid:38}  {row.get('name') or '(unnamed)'}")
+
+    print(f"\n{len(rows)} {args.kind}   (add --raw to see every field)")
+    if args.kind == "llms" and not any(llm_identity(r)["refs"] or llm_identity(r)["name"] for r in rows):
+        print(
+            "\nNote: no name or model field came back — only provider. Run\n"
+            "`list llms --raw` and share it, or pin llm_config_id in the agent file."
+        )
     return 0
 
 
@@ -133,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pl = sub.add_parser("list")
     pl.add_argument("kind", choices=["agents", "tools", "llms"])
+    pl.add_argument("--raw", action="store_true", help="Dump every field as JSON")
     pl.set_defaults(func=cmd_list)
 
     pe = sub.add_parser("export")

@@ -23,7 +23,7 @@ cp .env.example .env      # then fill in base URL + OAuth client
 ./run.sh list agents
 
 # Prepare the regulation text: per-principle files + bank_principles.txt (P1-P11)
-python scripts/extract_bcbs239.py --download
+.venv/bin/python scripts/extract_bcbs239.py --download
 
 # Create the agent in the Agent Studio UI with the prompt from
 # prompts/bcbs239_cde_dq_interpreter.md, then pull it into the repo

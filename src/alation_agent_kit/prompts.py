@@ -94,5 +94,8 @@ def sync_prompt_into_agent(agent_doc: dict, prompt: Prompt, **render_vars: Any) 
         raise TypeError(
             f"{prompt.name}: meta 'deploy_variables' must be a mapping, got {type(declared).__name__}"
         )
-    doc["prompt"] = prompt.render(**{**declared, **render_vars})
+    # rstrip to match what the server stores — Alation strips trailing
+    # whitespace from `prompt`, so normalising here keeps deploy and export
+    # agreeing instead of churning a one-character diff every round trip.
+    doc["prompt"] = prompt.render(**{**declared, **render_vars}).rstrip()
     return doc

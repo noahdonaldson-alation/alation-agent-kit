@@ -1,0 +1,49 @@
+name: bcbs239_cde_dq_interpreter
+purpose: >
+  Step 2 of the BCBS 239 pipeline. Pure interpretation: read the regulation and
+  identify Critical Data Element candidates and the data quality monitoring they
+  require. Reads nothing from the catalog and creates nothing.
+
+target_agent: bcbs239_cde_dq_interpreter
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+
+# Empty by design. The prompt body is a system prompt with NO template
+# variables, so the file on disk is byte-identical to what Agent Studio holds —
+# which is what makes local testing meaningful. Agent Studio has no templating,
+# so any {{ var }} left in the body would reach the model as literal text.
+deploy_variables: {}
+
+# Markdown, not JSON. The output is for human review while the interpretation
+# itself is what's being judged. Do NOT set an output_json_schema on the agent —
+# it would fight the prompt's format instructions. When this output eventually
+# feeds step 3 (catalog matching), that's when JSON earns its place, and the
+# prompt changes at the same time.
+output:
+  format: markdown
+  schema: null
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  type: string
+  produced_by: scripts/extract_bcbs239.py -> artifacts/bcbs239/bank_principles.txt
+  chunking: none — all bank-facing principles (1-11) together, ~6.5k tokens
+  rationale: >
+    CDEs are cross-cutting, so the model needs P2, P3, P4 and P7 in view at once.
+    Sending one principle at a time produces disconnected lists.
+
+agent_config:
+  tools: []          # deliberately none — pure interpretation, nothing to look up
+  mode: tool_call
+
+changelog:
+  - version: 0.1.0
+    date: 2026-08-24
+    note: >
+      Initial version. The load-bearing parts are the four CDE inclusion tests
+      (which stop the model listing every field a bank owns) and the required
+      out-of-scope section naming P8-P11. Revise those before touching tone.

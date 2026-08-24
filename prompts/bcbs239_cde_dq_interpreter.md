@@ -101,11 +101,3 @@ instead. Be specific rather than apologetic.
 
 | CDE | Name | Criticality | Principles | DQ dimensions |
 |---|---|---|---|---|
-
----
-
-This file is a **system prompt** and deliberately contains no template
-variables. The regulation text arrives as the user message — locally and in Agent
-Studio alike — so the prompt deployed to Alation is byte-identical to the one
-tested locally. Agent Studio has no prompt templating, so any variable here
-would reach the model unrendered.

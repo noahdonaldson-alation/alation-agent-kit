@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from .client import AI_V1, AlationClient
-from .store import Lockfile, canonicalize_agent
+from .store import Lockfile, canonicalize_agent, llm_identity
 
 AGENT_PATH = f"{AI_V1}/config/agent"
 TOOL_PATH = f"{AI_V1}/config/tool"
@@ -77,6 +77,97 @@ class AgentStudio:
             return agent_id
         return None
 
+    # -- export-shape -> config-shape resolution ---------------------------
+    def resolve_llm_config_id(self, llm: dict) -> str | None:
+        """Find the instance UUID for a portable `llm` block from an export.
+
+        Exports describe the model portably; PATCH and POST want an
+        `llm_config_id` UUID. The list endpoint and the export use different
+        field names, so matching goes through `llm_identity()` and compares
+        against every reference string a row exposes. Most specific first:
+
+          1. any reference string matches (e.g. the composite provider:model ref)
+          2. provider + model_name together
+          3. friendly name match
+          4. provider alone, only if unambiguous
+
+        Returns None rather than guessing when the match is ambiguous.
+        """
+        if not llm:
+            return None
+        candidates = self.list_llms()
+        if not candidates:
+            return None
+
+        idents = [(c, llm_identity(c)) for c in candidates]
+
+        # Every string the file offers as an identifier for this model.
+        wanted = [
+            v for v in (llm.get("default_llm_ref"), llm.get("model_name"), llm.get("model"))
+            if isinstance(v, str) and v
+        ]
+
+        for w in wanted:
+            hits = [c for c, i in idents if w in i["refs"]]
+            if len(hits) == 1:
+                return hits[0].get("id")
+
+        provider, model = llm.get("provider"), llm.get("model_name")
+        if provider and model:
+            hits = [
+                c for c, i in idents
+                if i["provider"] == provider and model in i["refs"]
+            ]
+            if len(hits) == 1:
+                return hits[0].get("id")
+
+        name = llm.get("name") or llm.get("llm_config_name")
+        if name:
+            hits = [c for c, i in idents if i["name"] == name]
+            if len(hits) == 1:
+                return hits[0].get("id")
+
+        if provider:
+            hits = [(c, i) for c, i in idents if i["provider"] == provider]
+            if len(hits) == 1:
+                return hits[0][0].get("id")
+            if len(hits) > 1:
+                print(
+                    f"  ! {len(hits)} LLM configs share provider {provider!r} and nothing "
+                    f"more specific matched:"
+                )
+                for c, i in hits:
+                    print(f"      {c.get('id')}  {i['name'] or '(unnamed)'}  {i['refs'][:1]}")
+                print(
+                    '    Pin it explicitly: add "llm_config_id": "<uuid>" to the agent file.'
+                )
+        return None
+
+    def resolve_tool_config_ids(self, tools: list[dict]) -> list[str] | None:
+        """Map exported tool definitions to instance UUIDs, preserving order.
+
+        Order matters: `tool_config_ids` and `parameter_bindings` are matched
+        positionally and must be the same length. Returns None if any tool is
+        unresolvable, so we never send a partial, misaligned list.
+        """
+        if not tools:
+            return []
+        by_name = {t.get("name"): t.get("id") for t in self.list_tools()}
+        resolved, missing = [], []
+        for t in tools:
+            tid = by_name.get(t.get("name"))
+            if tid:
+                resolved.append(tid)
+            else:
+                missing.append(t.get("name"))
+        if missing:
+            print(
+                f"  ! tools not found on this instance: {', '.join(map(str, missing))}. "
+                f"Create them first (tools are not created by agent deploy)."
+            )
+            return None
+        return resolved
+
     # -- export ------------------------------------------------------------
     def export_agent(self, name_or_id: str, canonical: bool = True) -> dict:
         agent_id = name_or_id
@@ -109,6 +200,56 @@ class AgentStudio:
 
         existing_id = self.resolve_agent_id(name)
         patch_body = {k: v for k, v in export_doc.items() if k in _CREATE_FIELDS}
+
+        # Export shape and config shape disagree: exports carry portable `llm`
+        # and `tools`; PATCH/POST want `llm_config_id` and `tool_config_ids`
+        # (instance UUIDs). Translate here so a model or tool change in the file
+        # actually takes effect instead of silently no-op'ing.
+        if existing_id and not dry_run:
+            if export_doc.get("llm") and "llm_config_id" not in patch_body:
+                llm_id = self.resolve_llm_config_id(export_doc["llm"])
+                if llm_id:
+                    patch_body["llm_config_id"] = llm_id
+                    ref = export_doc["llm"].get("default_llm_ref") or export_doc["llm"].get("provider")
+                    print(f"  resolved llm {ref} -> {llm_id}")
+                else:
+                    print(
+                        "  ! could not resolve llm to an llm_config_id; the model will "
+                        "NOT be updated. Set it in the UI, or add an explicit "
+                        "\"llm_config_id\" to the agent file."
+                    )
+            if export_doc.get("tools") and "tool_config_ids" not in patch_body:
+                tool_ids = self.resolve_tool_config_ids(export_doc["tools"])
+                if tool_ids is not None:
+                    patch_body["tool_config_ids"] = tool_ids
+                    bindings = export_doc.get("parameter_bindings") or []
+                    if bindings and len(bindings) != len(tool_ids):
+                        raise RuntimeError(
+                            f"parameter_bindings ({len(bindings)}) and tools ({len(tool_ids)}) "
+                            "must be the same length — they are matched positionally. "
+                            "Re-export to fix the pairing."
+                        )
+                    print(f"  resolved {len(tool_ids)} tool(s) -> tool_config_ids")
+                else:
+                    print("  ! tools will NOT be updated (see above)")
+
+        # The API rejects `parameter_bindings` unless `tool_config_ids` comes with
+        # it — 422 "tool_config_ids must be provided when parameter_bindings is
+        # provided". An export of a tool-less agent carries an empty bindings
+        # list, so sending it verbatim fails. Drop it when there are no tools.
+        if "parameter_bindings" in patch_body and "tool_config_ids" not in patch_body:
+            if patch_body["parameter_bindings"]:
+                raise RuntimeError(
+                    "parameter_bindings is set but tools could not be resolved to "
+                    "tool_config_ids. Sending bindings without tool ids is rejected by "
+                    "the API, and sending them mismatched would silently rewire the "
+                    "agent. Fix the tools first, or re-export."
+                )
+            patch_body.pop("parameter_bindings")
+
+        # Nulls in an export mean "not set" rather than "clear this", and some
+        # endpoints reject them outright. Drop them.
+        patch_body = {k: v for k, v in patch_body.items() if v is not None}
 
         if dry_run:
             action = f"PATCH {existing_id}" if existing_id else "CREATE (import)"

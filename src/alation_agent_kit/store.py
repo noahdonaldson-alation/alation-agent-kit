@@ -33,6 +33,12 @@ def canonicalize_agent(export: dict) -> dict:
     """Normalize an AgentExport payload so it is stable and diffable in git."""
     doc = _strip_annotations(json.loads(json.dumps(export)))
 
+    # Alation strips trailing whitespace from `prompt`. Without matching that,
+    # a prompt file ending in a newline (as every sane text file does) shows a
+    # one-character diff on every single export. Verified against a live export.
+    if isinstance(doc.get("prompt"), str):
+        doc["prompt"] = doc["prompt"].rstrip()
+
     tools = doc.get("tools") or []
     bindings = doc.get("parameter_bindings") or []
 
@@ -64,6 +70,36 @@ def write_json(path: str | Path, doc: Any) -> Path:
 
 def read_json(path: str | Path) -> Any:
     return json.loads(Path(path).read_text())
+
+
+def llm_identity(row: dict) -> dict:
+    """Pull provider / friendly name / model-reference strings out of an LLM row.
+
+    The `GET /config/llm` list and an agent's exported `llm` block do not use the
+    same field names, and the list's exact schema is undocumented. So scavenge
+    every plausible key instead of hard-coding one, and let callers match on any
+    of the collected reference strings.
+    """
+    provider = row.get("provider") or ""
+    name = row.get("name") or row.get("display_name") or row.get("title") or ""
+
+    refs: list[str] = []
+    for key in ("default_llm_ref", "llm_ref", "model_name", "model", "model_id", "llm_model_id"):
+        val = row.get(key)
+        if isinstance(val, str) and val:
+            refs.append(val)
+    # Anything else that looks like a model identifier.
+    for key, val in row.items():
+        if (
+            isinstance(val, str)
+            and val
+            and val not in refs
+            and key not in ("id", "provider", "name", "display_name", "title")
+            and ("model" in key.lower() or key.lower().endswith("_ref"))
+        ):
+            refs.append(val)
+
+    return {"provider": provider, "name": name, "refs": refs}
 
 
 class Lockfile:
