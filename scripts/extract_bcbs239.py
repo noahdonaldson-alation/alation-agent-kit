@@ -147,9 +147,34 @@ def main() -> int:
         print(f"  P{num:>2} {name[:42]:42} {len(body):>6,} chars{flag}")
 
     (out_dir / "index.json").write_text(json.dumps(index, indent=2) + "\n")
+
+    # Combined bank-facing principles (1-11). This is the input for CDE
+    # identification: CDEs are cross-cutting, so the model needs P2/P3/P4/P7 in
+    # view at once rather than one principle at a time. Principles 12-14 are
+    # addressed to supervisors and are deliberately excluded.
+    bank_files = [e for e in index if e["audience"] == "bank"]
+    combined = [
+        "BCBS 239 — Principles for effective risk data aggregation and risk reporting",
+        "Basel Committee on Banking Supervision, January 2013",
+        f"Source: {SOURCE_URL}",
+        "Bank-facing principles 1-11. Principles 12-14 address supervisors and are excluded.",
+        "=" * 70,
+        "",
+    ]
+    for entry in bank_files:
+        combined.append((out_dir / entry["file"]).read_text(encoding="utf-8").rstrip())
+        combined.append("")
+    bank_text = "\n".join(combined) + "\n"
+    (out_dir / "bank_principles.txt").write_text(bank_text, encoding="utf-8")
+
     print(f"\nWrote {len(index)} chunks + index.json to {out_dir}")
-    print("Note: principles 12-14 are addressed to supervisors, not banks — "
-          "expect no actionable Alation objects from them.")
+    print(f"Wrote bank_principles.txt — P1-P11 combined, {len(bank_text):,} chars "
+          f"(~{len(bank_text)//4:,} tokens)")
+    print("\nNext:")
+    print("  CDE identification (send all bank principles at once):")
+    print("    ./run.sh run bcbs239_cde_advisor --input-file artifacts/bcbs239/bank_principles.txt -o artifacts/cdes.json")
+    print("  Per-principle governance mapping (one principle at a time):")
+    print("    ./run.sh run bcbs239_interpreter --input-file artifacts/bcbs239/principle_03.txt")
     return 0
 
 

@@ -21,10 +21,11 @@ dist/
 .idea/
 .vscode/
 
-# Extracted source text and generated output — regenerate, don't commit
-# (remove these two lines if you decide the artifacts ARE the deliverable)
-artifacts/**/*.txt
-artifacts/**/*.raw.json
+# Extracted source text and generated output — regenerate, don't commit.
+# If you later decide a specific artifact IS a deliverable, un-ignore it
+# explicitly with another ! line rather than loosening this rule.
+artifacts/*
+!artifacts/.gitkeep
 
 # OS
 .DS_Store

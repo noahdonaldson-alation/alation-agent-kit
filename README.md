@@ -22,15 +22,19 @@ cp .env.example .env      # then fill in base URL + OAuth client
 ./run.sh whoami           # verifies auth, lists visible agents
 ./run.sh list agents
 
-# Prepare the regulation text (one file per principle)
+# Prepare the regulation text: per-principle files + bank_principles.txt (P1-P11)
 python scripts/extract_bcbs239.py --download
 
-# Deploy the agent with the prompt rendered in
-./run.sh deploy agents/bcbs239_interpreter.json --prompt bcbs239_principle_extract --dry-run
-./run.sh deploy agents/bcbs239_interpreter.json --prompt bcbs239_principle_extract
+# Create the agent in the Agent Studio UI with the prompt from
+# prompts/bcbs239_cde_dq_interpreter.md, then pull it into the repo
+./run.sh export <agent-name>
 
-# Run it against one principle
-./run.sh run bcbs239_interpreter --input-file artifacts/bcbs239/principle_03.txt -o artifacts/p03.json
+# From then on the prompt file is the source of truth
+./run.sh deploy agents/<agent-name>.json --prompt bcbs239_cde_dq_interpreter --dry-run
+./run.sh deploy agents/<agent-name>.json --prompt bcbs239_cde_dq_interpreter
+
+# Run it
+./run.sh run <agent-name> --input-file artifacts/bcbs239/bank_principles.txt -o artifacts/cde_dq.md
 ```
 
 `run.sh` installs `uv` if missing (no admin rights, no Homebrew, no pre-existing
@@ -134,20 +138,16 @@ typo fails loudly rather than shipping an empty string.
 
 ## Evals
 
-```bash
-npx promptfoo@latest eval -c evals/promptfooconfig.yaml --repeat 3
-npx promptfoo@latest view
-```
+**Not wired up yet.** `evals/` still contains the scaffolding from an earlier,
+JSON-output version of this prompt and its assertions no longer match anything.
+Leave it alone until the prompt stabilises and there's a reason to assert on
+output shape — the current prompt emits markdown for human review, which is the
+right call while the interpretation itself is what's being judged.
 
-Two gates, one dataset. **Gate 1** runs the prompt against the raw model API —
-fast and cheap. **Gate 2** (commented in the config) replays the same cases
-against the deployed agent, because local testing has none of Studio's
-scaffolding and a prompt can behave differently there.
-
-Three structural assertions run on every case: output validates against
-`schemas/policy_proposal.schema.json`; a supervisor-facing principle proposes no
-Alation objects; and no `cde_overlay_standard` appears without the `policy` it
-derives from (Alation requires exactly one source policy, and inherits its name).
+When it's time, the intended design is two gates over one dataset: **Gate 1**
+runs the prompt against the raw model API (fast, cheap); **Gate 2** replays the
+same cases against the deployed agent, because local testing has none of
+Studio's scaffolding and a prompt can behave differently there.
 
 **Gate on aggregate pass rate, never exact output match.** Model output is
 non-deterministic even at temperature 0 — inference kernels aren't

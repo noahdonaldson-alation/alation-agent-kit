@@ -111,63 +111,59 @@ Check the console output for any `<- EMPTY, check the parser` flags. The parser
 matches line-leading paragraph numbers; if bis.org changes the PDF's text layer,
 that's where it breaks.
 
-## Step 4 — Deploy the agent ⚪
+## Step 4 — Create the agent in Agent Studio ⚪
 
-Always dry-run first. It works offline, with no credentials:
+For CDE and DQ interpretation, feed the **combined** bank-facing principles
+(`bank_principles.txt`), not one principle at a time — CDEs are cross-cutting,
+so the model needs P2, P3, P4 and P7 in view together.
 
-```bash
-./run.sh deploy agents/bcbs239_interpreter.json --prompt bcbs239_principle_extract --dry-run
-```
+Create it in the UI first. Hand-writing agent JSON is miserable, and export
+canonicalizes it on the way back into the repo:
 
-```
-Using prompt 'bcbs239_principle_extract' (sha=0c72955126e6, git=dea3901)
-[dry-run] PATCH 9f8e… agent 'bcbs239_interpreter'
-```
+1. Agent Studio → new agent
+2. System prompt: paste the contents of
+   `prompts/bcbs239_cde_dq_interpreter.md`
+3. Input: one `message` parameter, type string
+4. Save, then paste `artifacts/bcbs239/bank_principles.txt` as the message
 
-Then for real:
-
-```bash
-./run.sh deploy agents/bcbs239_interpreter.json --prompt bcbs239_principle_extract
-```
-
-`--prompt` renders `prompts/bcbs239_principle_extract.md` into the agent's
-`prompt` field. **Never edit the `prompt` field in the JSON by hand** — the
-`.md` file is the source of truth, and the JSON's placeholder text says so.
-
-The agent lands in `draft`. Publish it in the UI when you're ready.
-
-## Step 5 — Run it ⚪
+Then capture it into the repo so the prompt is version-controlled:
 
 ```bash
-./run.sh run bcbs239_interpreter \
-  --input-file artifacts/bcbs239/principle_03.txt \
-  -o artifacts/p03.json
+./run.sh export <agent-name>          # -> agents/<agent-name>.json
+```
+
+Cut the `prompt` value out of that JSON and replace it with a placeholder note —
+the `.md` file is the source of truth. From then on, deploy renders it back in:
+
+```bash
+./run.sh deploy agents/<agent-name>.json --prompt bcbs239_cde_dq_interpreter --dry-run
+./run.sh deploy agents/<agent-name>.json --prompt bcbs239_cde_dq_interpreter
+```
+
+**Never edit the `prompt` field in the JSON by hand.**
+
+## Step 5 — Run it from the CLI ⚪
+
+```bash
+./run.sh run <agent-name> \
+  --input-file artifacts/bcbs239/bank_principles.txt \
+  -o artifacts/cde_dq_interpretation.md
 ```
 
 Add `-v` to watch the task poll. `/call` is asynchronous — it returns a
 `task_id` and the client polls until terminal, with a 300-second ceiling.
-
-Sanity-check the output against the schema:
-
-```bash
-python -c "
-import json, jsonschema
-schema = json.load(open('schemas/policy_proposal.schema.json'))
-jsonschema.validate(json.load(open('artifacts/p03.json')), schema)
-print('valid')"
-```
 
 ## Step 6 — The daily loop 🔵
 
 This is the part you'll actually spend time in.
 
 ```bash
-$EDITOR prompts/bcbs239_principle_extract.md          # 1. edit the prompt
-./run.sh deploy agents/bcbs239_interpreter.json \
-  --prompt bcbs239_principle_extract                   # 2. push it
-./run.sh run bcbs239_interpreter \
-  --input-file artifacts/bcbs239/principle_03.txt      # 3. see what changed
-git add -A && git commit -m "Tighten the scope rules"  # 4. commit what works
+$EDITOR prompts/bcbs239_cde_dq_interpreter.md            # 1. edit the prompt
+./run.sh deploy agents/<agent-name>.json \
+  --prompt bcbs239_cde_dq_interpreter                    # 2. push it
+./run.sh run <agent-name> \
+  --input-file artifacts/bcbs239/bank_principles.txt     # 3. see what changed
+git add -A && git commit -m "Tighten the CDE inclusion tests"   # 4. commit what works
 ```
 
 `./run.sh prompts` shows each prompt's content hash and the git SHA of the last
@@ -234,7 +230,7 @@ returns a `warnings` list telling you what needs manual attention.
 - **Sources root:** right-click `src/` → Mark Directory as → Sources Root, so
   imports resolve without the `PYTHONPATH` dance.
 - **Run configuration:** Module name `alation_agent_kit.cli` (not script path),
-  Parameters e.g. `run bcbs239_interpreter --input-file artifacts/bcbs239/principle_03.txt`,
+  Parameters e.g. `run <agent-name> --input-file artifacts/bcbs239/bank_principles.txt`,
   Working directory the repo root.
 - **`.env`:** PyCharm doesn't load it natively. Either install the EnvFile
   plugin, or just use `./run.sh`, which does load it.
@@ -287,4 +283,4 @@ returns a `warnings` list telling you what needs manual attention.
 | `./run.sh deploy <file> [--prompt N] [--dry-run]` | Upsert an agent (`--dry-run` works offline) |
 | `./run.sh run <name> [-m msg] [--input-file f] [--param k=v] [-o out] [-v]` | Invoke and block for the result |
 | `./run.sh prompts` | List prompts with content hash and git SHA |
-| `python scripts/extract_bcbs239.py --download` | Fetch and chunk the regulation |
+| `python scripts/extract_bcbs239.py --download` | Fetch the PDF, chunk per principle, write `bank_principles.txt` |
