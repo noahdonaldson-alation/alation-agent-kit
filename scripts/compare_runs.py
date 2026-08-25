@@ -139,6 +139,54 @@ def parse_principles(cell: str) -> list[int]:
     })
 
 
+def parse_json_run(path: Path, text: str) -> dict | None:
+    """Parse a run whose output is the structured JSON contract.
+
+    Returns None if the file isn't that shape, so the caller falls back to the
+    markdown summary-table parser used by v0.1.0-v0.5.0 runs.
+    """
+    stripped = text.strip()
+    if stripped.startswith("```"):  # tolerate fenced JSON
+        stripped = re.sub(r"^```(?:json)?|```$", "", stripped, flags=re.M).strip()
+    if not stripped.startswith("{"):
+        return None
+    try:
+        doc = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    if "cde_candidates" not in doc:
+        return None
+
+    cdes = [{
+        "ref": c.get("ref", "?"),
+        "name": (c.get("name") or "").strip(),
+        "bucket": bucket_for(c.get("name") or ""),
+        "criticality": c.get("criticality"),
+        "principles": sorted({d.get("principle") for d in (c.get("driven_by") or [])
+                              if isinstance(d.get("principle"), int)}),
+        "dq_dimensions": sorted({(r.get("dimension") or "").lower()
+                                 for r in (c.get("dq_requirements") or [])}),
+        # JSON-only signals, so defensibility is measurable rather than eyeballed
+        "dq_count": len(c.get("dq_requirements") or []),
+        "dq_cited": sum(1 for r in (c.get("dq_requirements") or []) if r.get("citation")),
+        "dq_threshold_basis": sum(1 for r in (c.get("dq_requirements") or [])
+                                  if (r.get("threshold_basis") or "").strip()),
+        "search_terms": len(c.get("search_terms") or []),
+    } for c in doc["cde_candidates"]]
+
+    return {
+        "file": path.name,
+        "format": "json",
+        "cdes": cdes,
+        "rows_found": len(cdes),
+        "duplication_factor": 1.0,
+        "echoes_input": False,
+        "suspect": False,
+        "cross_cutting": [x.get("ref", "XDQ-??") for x in (doc.get("cross_cutting_dq") or [])],
+        "has_out_of_scope": bool(doc.get("out_of_scope")),
+    }
+
+
 def parse_run(path: Path) -> dict:
     """Parse one run file, defending against duplicated content.
 
@@ -147,7 +195,11 @@ def parse_run(path: Path) -> dict:
     keeping the first, and report how much duplication was found — a run that
     needed heavy deduplication should not be trusted for content analysis.
     """
-    text = path.read_text(errors="replace")
+    text = path.read_text(encoding="utf-8", errors="replace")
+
+    as_json = parse_json_run(path, text)
+    if as_json is not None:
+        return as_json
 
     raw_rows = [
         (ref, name, crit, principles, dims)
@@ -238,6 +290,23 @@ def main() -> int:
               f"{len(r['cross_cutting'])} cross-cutting   "
               f"out-of-scope={'yes' if r['has_out_of_scope'] else 'NO'}"
               + (f"   <-- {', '.join(flags)}" if flags else ""))
+
+    # Defensibility, only measurable on JSON runs: every DQ requirement should
+    # carry a citation and a stated threshold basis.
+    json_runs = [r for r in runs if r.get("format") == "json"]
+    if json_runs:
+        tot = sum(c["dq_count"] for r in json_runs for c in r["cdes"])
+        cited = sum(c["dq_cited"] for r in json_runs for c in r["cdes"])
+        based = sum(c["dq_threshold_basis"] for r in json_runs for c in r["cdes"])
+        terms = [c["search_terms"] for r in json_runs for c in r["cdes"]]
+        print(f"\n{'='*74}\nDEFENSIBILITY ({len(json_runs)} JSON run(s))\n{'='*74}")
+        print(f"  DQ requirements            {tot}")
+        print(f"  with a citation            {cited}  ({cited/max(tot,1):.0%})")
+        print(f"  with a threshold basis     {based}  ({based/max(tot,1):.0%})")
+        print(f"  search terms per CDE       min {min(terms)}, median "
+              f"{sorted(terms)[len(terms)//2]}, max {max(terms)}")
+        if cited < tot or based < tot:
+            print("  <-- gaps here break the audit trail the pipeline depends on")
 
     suspect = [r for r in runs if r["suspect"]]
     if suspect:

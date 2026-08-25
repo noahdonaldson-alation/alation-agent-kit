@@ -164,61 +164,86 @@ step-2 sentence for a 3, or state which slice or control degrades for a 2.
 
 ## Output format
 
-Markdown, in this order.
+**Return a single JSON object and nothing else.** No prose before or after, no
+markdown fences. It conforms to `schemas/cde_dq_requirements.schema.json` and is
+consumed by a downstream agent that maps these requirements onto physical data
+elements in a real catalog — so a malformed object breaks the pipeline silently.
 
-### 1. Objectives and scope
+```json
+{
+  "regulation": {
+    "id": "BCBS239",
+    "title": "Principles for effective risk data aggregation and risk reporting",
+    "published": "2013-01-09",
+    "source_url": "https://www.bis.org/publ/bcbs239.pdf",
+    "scope_note": "who it applies to, 1-2 sentences"
+  },
+  "objectives": [
+    {"objective": "...", "paragraphs": [35]}
+  ],
+  "cde_candidates": [
+    {
+      "ref": "CDE-01",
+      "name": "Counterparty Identifier",
+      "definition": "business definition, system-independent",
+      "why_critical": "the mechanism by which a risk figure goes wrong without it",
+      "risk_types": ["credit", "counterparty", "concentration"],
+      "criticality": 3,
+      "criticality_rationale": "for a 3, the completed sentence from step 2 of the procedure",
+      "driven_by": [
+        {"principle": 2, "principle_name": "Data architecture",
+         "paragraphs": [33], "quote": "verbatim, <=300 chars"}
+      ],
+      "search_terms": ["counterparty ID", "LEI", "obligor ID"],
+      "dq_requirements": [
+        {"dimension": "uniqueness",
+         "rule_intent": "what must be true",
+         "measurement": "what to count or compare, no table or column names",
+         "threshold": "0 duplicates",
+         "threshold_basis": "why that threshold",
+         "citation": {"principle": 2, "paragraphs": [33], "quote": "..."}}
+      ],
+      "confidence": 0.9
+    }
+  ],
+  "cross_cutting_dq": [
+    {"ref": "XDQ-01", "name": "Risk-to-finance reconciliation",
+     "spans": ["CDE-03", "CDE-09"],
+     "dq_requirement": { "...same shape as above..." }}
+  ],
+  "out_of_scope": [
+    {"principles": [8, 9], "topic": "report content and clarity",
+     "why_not_addressable": "...", "what_is_needed_instead": "...",
+     "also_drives_cde": ["CDE-07"]}
+  ]
+}
+```
 
-What the regulation is trying to achieve (3–6 bullets, each with paragraph
-citations) and who it applies to.
+Field rules, in addition to the schema:
 
-### 2. Critical Data Element candidates
-
-One block per candidate:
-
-**CDE-01 — <name>**
-- **Definition:** business definition, system-independent
-- **Why critical:** why it matters to aggregation or reporting specifically
-- **Risk types:** credit / market / liquidity / operational / counterparty /
-  concentration / cross-cutting
-- **Criticality:** 1–3 per the rubric above, naming which level applies and why
-- **Driven by:** Principle N (¶NN–NN) — "short verbatim quote"
-- **Search terms:** terms and likely naming variants to look for in a catalog
-- **Data quality requirements:** one per line, in this order —
-  - *dimension* — rule intent | measurement | threshold **and why that
-    threshold** | **(¶NN)** the paragraph authorising the check
-
-### 3. Cross-cutting data quality requirements
-
-**Mandatory — at least two.** Requirements that span multiple CDEs rather than
-attaching to one. Label each `XDQ-01`, `XDQ-02`, … and state which CDEs it spans,
-plus the same fields as above **including the paragraph citation and threshold
-justification**.
-
-### 4. Out of scope
-
-Which principles CDEs and DQ monitoring cannot satisfy, and what would be needed
-instead. Be specific rather than apologetic. Where a principle also drives a CDE
-above, say so and explain the split.
-
-### 5. Summary table
-
-| CDE | Name | Criticality | Principles | DQ dimensions |
-|---|---|---|---|---|
-
----
+- **`search_terms` is the handoff.** The downstream agent has no other way to
+  find these elements in a catalog, so give real naming variants — abbreviations,
+  legacy names, physical column conventions — not restatements of the label.
+- **`measurement` must contain no table or column names.** You do not know the
+  target environment; naming the physical objects is the next agent's job.
+- **Every `dq_requirement` carries its own `citation`.** Inheriting it from the
+  parent CDE is not sufficient — the check must be defensible on its own line.
+- **`out_of_scope` uses `also_drives_cde`** where a principle both drives an
+  element and has obligations you cannot address, so the overlap is explicit
+  rather than looking like a contradiction.
+- 8–14 `cde_candidates`, at least 2 `cross_cutting_dq`.
 
 ## The test this output must pass
 
-A reader who is neither a financial-services expert nor an auditor should be able
-to point at any line and ask two questions, and find the answer in the document
-itself rather than having to trust you:
+Rendered back into a report, this JSON must let a reader who is neither a
+financial-services expert nor an auditor point at any entry and ask two
+questions, and find the answer in the data itself rather than having to trust
+you:
 
-1. **"Why is this a critical data element?"** — answered by *why critical* (the
-   mechanism by which a risk figure goes wrong), the criticality sentence, and
-   the cited paragraphs.
+1. **"Why is this a critical data element?"** — answered by `why_critical`,
+   `criticality_rationale`, and `driven_by`.
 2. **"Why are we running this quality check, and why that threshold?"** —
-   answered by the rule intent, the cited paragraph authorising it, and the
-   stated basis for the threshold.
+   answered by `rule_intent`, `citation`, and `threshold_basis`.
 
-If either question needs knowledge you have not written down, the entry is not
+If either question needs knowledge that is not in a field, the entry is not
 finished.
