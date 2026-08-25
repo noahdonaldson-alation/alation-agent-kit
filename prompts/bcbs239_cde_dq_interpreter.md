@@ -39,8 +39,53 @@ Include an element if it meets at least one test:
   counterparty, legal entity, or instrument (Principle 2, Data architecture)
 
 Exclude anything merely operationally convenient, purely descriptive, or whose
-failure would not distort a risk figure. A short defensible list beats a long
-speculative one — aim for **8 to 15** candidates.
+failure would not distort a risk figure.
+
+## Required coverage
+
+Return **10 to 12** candidates, and cover every category below. These are not
+suggestions — a register that omits one of them has a hole a supervisor would
+find. If you genuinely believe a category does not apply, name it and say why
+rather than silently dropping it.
+
+1. **Counterparty identity** — the key that links exposures to a single
+   counterparty across systems
+2. **The bank's own legal entity** — the booking entity, for group consolidation
+   and subsidiary reporting
+3. **Exposure measure** — at least one monetary amount that risk figures are
+   built from
+4. **Risk taxonomy** — the classification that partitions exposures by risk type
+5. **Aggregation dimensions** — the slices Principles 4 and 6 explicitly require:
+   business line, geography, industry/sector
+6. **Temporal key** — the as-of/position date that every aggregate is stated as of
+7. **Reconciliation key** — the identifier that ties a risk record to the general
+   ledger or system of record, per ¶36(c). Without this, accuracy and
+   completeness cannot be evidenced at all
+8. **Lineage / provenance** — what identifies the source system, or flags manual
+   and end-user-computing input, per ¶36(d) and ¶39
+
+Categories 7 and 8 are the ones most often forgotten and among the most
+defensible, because the regulation names them directly. Do not omit them.
+
+Beyond these, add discretionary candidates only where the text clearly supports
+them (collateral, currency, maturity, limits, liquidity measures). Depth beats
+breadth: a well-argued register of 10 is stronger than a thin list of 15.
+
+## Criticality
+
+Rate 1–3 using this test, not general importance:
+
+- **3** — aggregation or reconciliation is **impossible** without it. Its
+  failure invalidates an aggregate figure rather than degrading it.
+- **2** — a required reporting dimension or slice degrades. The aggregate is
+  still produced, but incomplete, unsliceable, or unreconcilable in part.
+- **1** — supporting context. It improves interpretation, but no aggregate
+  figure is wrong without it.
+
+Expect roughly **3 to 5** at criticality 3. If more than 5 come out as 3, the
+test is not being applied — go back and ask which failures truly invalidate a
+figure rather than degrade it. State the rubric level you applied in the
+justification.
 
 ## Rules
 
@@ -62,6 +107,17 @@ speculative one — aim for **8 to 15** candidates.
   comprehensiveness, clarity, frequency and distribution. Those are reporting
   and board-governance matters that no CDE register or DQ monitor addresses.
   Stating this plainly is what makes the rest of the analysis trustworthy.
+- **A principle may both drive a CDE and be out of scope.** Principle 8, for
+  instance, names industry sector as a required report dimension (so it drives a
+  data element) while its report-content obligations remain unaddressable. When
+  a principle appears in both places, say so explicitly in the out-of-scope
+  section — an unexplained contradiction reads as an error.
+- **Sections 3 and 4 are mandatory.** Every response must include at least two
+  cross-cutting data quality requirements and a populated out-of-scope section.
+  Cross-cutting requirements are the ones that span CDEs — reconciliation
+  between risk and finance, or resolving one counterparty across systems — and
+  they cannot be expressed by monitoring any single element. Omitting them is
+  the most common failure in this task.
 
 ## Output format
 
@@ -81,7 +137,7 @@ One block per candidate:
 - **Why critical:** why it matters to aggregation or reporting specifically
 - **Risk types:** credit / market / liquidity / operational / counterparty /
   concentration / cross-cutting
-- **Criticality:** 1–3 (3 highest), with one line of justification
+- **Criticality:** 1–3 per the rubric above, naming which level applies and why
 - **Driven by:** Principle N (¶NN–NN) — "short verbatim quote"
 - **Search terms:** terms and likely naming variants to look for in a catalog
 - **Data quality requirements:**
@@ -89,13 +145,15 @@ One block per candidate:
 
 ### 3. Cross-cutting data quality requirements
 
-Requirements that span multiple CDEs rather than attaching to one — for example
-reconciliation between risk and finance. Same fields, plus which CDEs it spans.
+**Mandatory — at least two.** Requirements that span multiple CDEs rather than
+attaching to one. Label each `XDQ-01`, `XDQ-02`, … and state which CDEs it spans,
+plus the same dimension / rule intent / measurement fields.
 
 ### 4. Out of scope
 
 Which principles CDEs and DQ monitoring cannot satisfy, and what would be needed
-instead. Be specific rather than apologetic.
+instead. Be specific rather than apologetic. Where a principle also drives a CDE
+above, say so and explain the split.
 
 ### 5. Summary table
 

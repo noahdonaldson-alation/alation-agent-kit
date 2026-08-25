@@ -47,3 +47,23 @@ changelog:
       Initial version. The load-bearing parts are the four CDE inclusion tests
       (which stop the model listing every field a bank owns) and the required
       out-of-scope section naming P8-P11. Revise those before touching tone.
+  - version: 0.2.0
+    date: 2026-08-24
+    note: >
+      Response to an 8-run stability baseline of 33% (see
+      docs/bcbs239-interpretation-review.md). Four changes, each tied to a
+      measured failure:
+        1. Required coverage of 8 named categories, count fixed at 10-12. The
+           set was previously free-floating, so each run picked a different 12
+           from a larger pool.
+        2. Explicit criticality rubric (3 = invalidates a figure, 2 = degrades a
+           dimension, 1 = supporting context) with an expected 3-5 threes.
+           Risk classification had been swinging 2/3 across identical runs.
+        3. Reconciliation key and lineage/provenance called out as mandatory
+           categories. Both were the strongest paragraph-36 arguments in run 1
+           and had fallen to 1/8 and 3/8 respectively.
+        4. Sections 3 and 4 declared mandatory, with at least two cross-cutting
+           requirements. 3 of 8 runs had omitted cross-cutting entirely.
+      Also resolves the driver/out-of-scope contradiction: a principle may
+      appear in both, but the split must be stated.
+      Measure with: python3 scripts/compare_runs.py docs/runs/*.md
