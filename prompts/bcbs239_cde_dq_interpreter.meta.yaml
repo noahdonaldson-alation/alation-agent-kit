@@ -66,7 +66,7 @@ changelog:
            requirements. 3 of 8 runs had omitted cross-cutting entirely.
       Also resolves the driver/out-of-scope contradiction: a principle may
       appear in both, but the split must be stated.
-      Measure with: python3 scripts/compare_runs.py docs/runs/*.md
+      Measure with: python3 scripts/compare_runs.py docs/runs/v0.1.0/*.md
   - version: 0.3.0
     date: 2026-08-24
     note: >
@@ -104,3 +104,11 @@ changelog:
       Expected: reconciliation key back to 10/10 at criticality 3, crit3 rising
       from 4 to 5 per run (still inside the 4-5 target), and no loss of the
       rating stability v0.3.0 gained.
+      RESULT (10 runs): all three held. crit3 = 5 in every run, reconciliation
+      key at criticality 3 in every run, zero rating drift. All 10 required
+      concepts present in all 10 runs with a single consistent rating each.
+      Note the "missing from 1 of 10 runs" in the v0.3.0 assessment was never
+      real - it was a comparator bucketing error. run06 named it "GL /
+      System-of-Record Reference Key", which the lineage bucket had claimed.
+      v0.4.0 is the converged version for this task: further changes should be
+      driven by a new requirement, not by the stability numbers.

@@ -4,8 +4,32 @@ Reviews and curated evidence for the prompts in this repo.
 
 | Path | What it is |
 |---|---|
-| `bcbs239-interpretation-review.md` | Review of the `bcbs239_cde_dq_interpreter` output — citation verification, strengths, weaknesses, and the run-to-run drift finding that justifies the next prompt revision |
-| `runs/` | Curated agent outputs kept as evidence. Named `YYYY-MM-DD-HHMM-<label>.md` |
+| **`prompt-iteration.md`** | **How prompt improvement is tracked** — the measure/change/re-measure loop, what to record, and the traps that produced wrong conclusions. Read this before revising any prompt. |
+| `bcbs239-interpretation-review.md` | Review of the `bcbs239_cde_dq_interpreter` output — citation verification, strengths, weaknesses, and the run-to-run drift findings that drove each prompt revision |
+| `runs/<prompt-version>/` | Curated agent outputs kept as evidence, **one directory per prompt version** |
+
+## Runs are grouped by prompt version
+
+```
+runs/v0.1.0/   the original prompt — 33% stability, 8 runs
+runs/v0.2.0/   required categories added — 77%, 9 runs
+runs/v0.3.0/   criticality procedure — drift eliminated, 10 runs
+runs/v0.4.0/   reconcilability added to the promotion test
+```
+
+The version comes from the `changelog` in the prompt's `.meta.yaml`. Grouping
+this way is what makes the comparison meaningful — you measure a version against
+a version, never a mixed pile:
+
+```bash
+python3 scripts/compare_runs.py docs/runs/v0.3.0/*.md      # one version
+python3 scripts/compare_runs.py docs/runs/v0.2.0/*.md      # compare to another
+```
+
+**Compare equal run counts.** Stability is the fraction of concepts appearing in
+*every* run, so more runs mechanically lowers it — 10 runs will always score
+below 8 runs of identical quality. When versions have different run counts,
+score a subset of the larger one to match.
 
 ## Why this exists separately from `artifacts/`
 

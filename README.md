@@ -51,10 +51,11 @@ prompts/          prompt bodies (.md) + sidecar metadata (.meta.yaml)
 agents/           agent definitions in AgentExport shape
 tools/            custom tool definitions (auth never committed)
 workflows/        workflow `definition` blobs
-schemas/          JSON Schema for agent output
-scripts/          extract_bcbs239.py — PDF -> per-principle chunks
-evals/            promptfoo config + golden cases
-artifacts/        extracted text and generated output (gitignored by default)
+scripts/          extract_bcbs239.py   PDF -> per-principle chunks
+                  compare_runs.py      measure stability across runs
+                  inspect_stream.py    report a raw SSE stream's event schema
+docs/             prompt-iteration method, reviews, and runs/ evidence
+artifacts/        extracted text and everyday output (gitignored)
 src/              the CLI and API client
 .lockfile.json    name -> UUID map. Commit this.
 ```
@@ -136,18 +137,35 @@ typo fails loudly rather than shipping an empty string.
 
 ---
 
-## Evals
+## Measuring prompt changes
 
-**Not wired up yet.** `evals/` still contains the scaffolding from an earlier,
-JSON-output version of this prompt and its assertions no longer match anything.
-Leave it alone until the prompt stabilises and there's a reason to assert on
-output shape — the current prompt emits markdown for human review, which is the
-right call while the interpretation itself is what's being judged.
+**Read [`docs/prompt-iteration.md`](docs/prompt-iteration.md) before revising a
+prompt.** Model output is non-deterministic, so a single run cannot distinguish a
+prompt weakness from sampling noise — you need a batch, a baseline, and a
+prediction written down before you change anything.
 
-When it's time, the intended design is two gates over one dataset: **Gate 1**
-runs the prompt against the raw model API (fast, cheap); **Gate 2** replays the
-same cases against the deployed agent, because local testing has none of
-Studio's scaffolding and a prompt can behave differently there.
+```bash
+mkdir -p docs/runs/v0.3.0
+for i in $(seq -w 1 10); do
+  f=docs/runs/v0.3.0/run$i.md
+  [ -s "$f" ] && continue
+  ./run.sh run <agent> --input-file <input> -o "$f" || echo "FAILED: run$i"
+done
+python3 scripts/compare_runs.py docs/runs/v0.3.0/*.md
+```
+
+`compare_runs.py` groups the items an output proposes into concepts and reports
+which appear in *every* run. It also detects duplicated or input-echoing captures
+and refuses to hide files it can't parse — both of which previously produced
+wrong conclusions.
+
+This approach took the BCBS 239 interpreter from 33% to 77% stability and
+eliminated criticality-rating drift entirely. The version history, with what each
+change taught, is in `docs/prompt-iteration.md`.
+
+`scripts/inspect_stream.py` is the companion tool for when a *capture* misbehaves
+rather than a prompt: point it at a `--raw` stream dump and it reports the event
+schema.
 
 **Gate on aggregate pass rate, never exact output match.** Model output is
 non-deterministic even at temperature 0 — inference kernels aren't

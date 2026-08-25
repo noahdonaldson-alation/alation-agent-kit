@@ -147,7 +147,7 @@ to be stated rather than left as an apparent contradiction.
 ### Confirmed over 8 runs
 
 The two-run figure above was superseded by an 8-run baseline
-(`python3 scripts/compare_runs.py docs/runs/*.md`).
+(`python3 scripts/compare_runs.py docs/runs/v0.1.0/*.md`).
 
 | Measure | Result |
 |---|---|
@@ -206,7 +206,7 @@ echoed input, with a size sanity check that fails loudly instead of writing a
 huge file. Five assembly cases are covered by tests.
 
 Run 2's recovered output is committed at
-[`docs/runs/2026-08-24-1444-run2.md`](runs/2026-08-24-1444-run2.md) as the
+[`docs/runs/v0.1.0/2026-08-24-1444-run2.md`](runs/v0.1.0/2026-08-24-1444-run2.md) as the
 evidence behind the drift finding. Run 1 was only ever pasted into a chat window
 and was not captured to a file — which is itself the argument for always using
 `-o`.

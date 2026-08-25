@@ -33,7 +33,13 @@ BUCKETS: list[tuple[str, tuple[str, ...]]] = [
     # Reconciliation Key", "GL / System-of-Record Reconciliation Key",
     # "Transaction / Instrument Identifier". Catch it first, before the lineage
     # bucket claims anything containing "system-of-record".
-    ("Reconciliation key",           ("reconciliation key", "reconciliation")),
+    # Named many ways: "GL Reconciliation Key", "GL / System-of-Record Reference
+    # Key", "Transaction / Instrument Identifier". Must be tested before the
+    # lineage bucket, which also matches "system-of-record".
+    ("Reconciliation key",           ("reconciliation", "general ledger", "gl /",
+                                      "gl reference", "ledger reference",
+                                      "system-of-record reference",
+                                      "system of record reference")),
     ("Currency / FX rate",           ("currency", "conversion rate", "exchange rate", "fx")),
     ("Counterparty identifier",      ("counterparty",)),
     ("Legal entity identifier",      ("legal entity", "booking entity")),
@@ -76,6 +82,23 @@ BUCKETS: list[tuple[str, tuple[str, ...]]] = [
     # trade id are adjacent but not the same thing. Worth watching whether the
     # model treats them interchangeably.
     ("Instrument / facility id",     ("facility identifier", "facility id")),
+]
+
+
+# The categories prompt v0.2.0+ mandates. Coverage of these is the metric that
+# matters: raw stability is stable/total, so a prompt that proposes MORE
+# discretionary variety scores LOWER even when everything mandated is solid.
+DEFAULT_REQUIRED = [
+    "Counterparty identifier",
+    "Legal entity identifier",
+    "Exposure amount",
+    "Risk classification",
+    "Business line",
+    "Geography / country",
+    "Industry / sector",
+    "Position / reporting date",
+    "Reconciliation key",
+    "Source system / lineage",
 ]
 
 
@@ -172,6 +195,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Measure CDE stability across runs")
     ap.add_argument("files", nargs="+")
     ap.add_argument("--json", help="Also write the comparison as JSON")
+    ap.add_argument(
+        "--required", default=",".join(DEFAULT_REQUIRED),
+        help="Comma-separated concept buckets the prompt mandates. Coverage of "
+             "these matters more than the headline stability number.",
+    )
     args = ap.parse_args()
 
     all_runs = [parse_run(Path(f)) for f in args.files]
@@ -246,8 +274,13 @@ def main() -> int:
         if drift:
             note = f"   <- DRIFT between runs: {sorted(set(singles))}"
         elif split:
-            note = (f"   ({len(split)} run(s) split this into "
-                    f"{max(len(c) for c in split.values())} elements — not drift)")
+            # Two elements landing in one bucket is EITHER genuine precision
+            # (gross vs net exposure) OR a bucketing error hiding a distinct
+            # concept — which has happened three times. Say so rather than
+            # calling it benign, and name the elements so it can be checked.
+            note = (f"   <- CHECK: {len(split)} run(s) put "
+                    f"{max(len(c) for c in split.values())} elements in this bucket; "
+                    f"may be mis-bucketed")
 
         shown = sorted(set(singles)) or sorted({c for cs in per_run.values() for c in cs})
         print(f"  {b:32} crit={'/'.join(map(str, shown))}{note}")
@@ -261,9 +294,26 @@ def main() -> int:
         flag = "  ** was rated criticality 3 **" if 3 in crits else ""
         print(f"  {b:32} in {len(runs_with)}/{n} runs  crit={crits}{flag}")
 
+    # Required coverage — read this before the headline number.
+    required = [r.strip() for r in args.required.split(",") if r.strip()]
+    print(f"\n{'='*74}\nREQUIRED COVERAGE\n{'='*74}")
+    covered = 0
+    for req in required:
+        runs_with = {x["run"] for x in seen.get(req, [])}
+        crits = sorted({x["criticality"] for x in seen.get(req, [])})
+        if len(runs_with) == n:
+            covered += 1
+            print(f"  {req:32} {n}/{n}   crit={'/'.join(map(str, crits))}")
+        else:
+            print(f"  {req:32} {len(runs_with)}/{n}   <-- GAP")
+    print(f"\n  {covered}/{len(required)} required concepts present in every run "
+          f"({covered / max(len(required), 1):.0%})")
+
     stability = len(core) / max(len(seen), 1)
     print(f"\n{'='*74}")
     print(f"Stability: {len(core)}/{len(seen)} concepts appear in every run  ({stability:.0%})")
+    print("  (stable / total. A prompt proposing more DISCRETIONARY variety scores")
+    print("   lower here even with required coverage at 100% — read both numbers.)")
     dropped3 = [b for b in partial if 3 in {x['criticality'] for x in partial[b]}]
     if dropped3:
         print(f"\nCriticality-3 elements that did NOT appear in every run: {len(dropped3)}")
