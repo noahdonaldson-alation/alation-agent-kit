@@ -112,3 +112,32 @@ changelog:
       System-of-Record Reference Key", which the lineage bucket had claimed.
       v0.4.0 is the converged version for this task: further changes should be
       driven by a new requirement, not by the stability numbers.
+  - version: 0.5.0
+    date: 2026-08-24
+    note: >
+      Driven by a new requirement rather than by the metrics, which is the
+      trigger v0.4.0 named. The requirement: a reader who is not a financial
+      services expert and not an auditor must be able to answer, from the
+      document alone, "why is this a CDE?" and "why are we running this quality
+      check?".
+      Assessment of v0.4.0 against that test: the CDE half passed - each element
+      had a causal mechanism, a visible criticality decision, and paragraph
+      citations with verbatim quotes. The DQ half failed - checks carried
+      dimension, intent, measurement and threshold but NO citation, so their
+      authority was only inferable from the parent CDE.
+      Changes:
+        1. Every DQ requirement must cite the paragraph authorising it, with the
+           monitoring-specific paragraphs named for the model (40 for accuracy
+           and validity, 43 for completeness, 36(c) for reconciliation, 44-47
+           for timeliness, 33 for key uniqueness).
+        2. Thresholds must be justified, not asserted. Zero is correct for
+           identifier integrity; paragraph 56 permits a materiality tolerance
+           for reconciliation and valuation, and that basis must be stated.
+        3. Cross-cutting requirements carry the same citation and threshold
+           justification.
+        4. Added a closing "test this output must pass" section stating the two
+           questions explicitly, so the standard is in the prompt rather than
+           only in a reviewer's head.
+      Expected: no change to CDE selection, required coverage, or criticality
+      stability - this touches the DQ fields only. Watch for regression in those,
+      since a longer prompt can dilute earlier instructions.

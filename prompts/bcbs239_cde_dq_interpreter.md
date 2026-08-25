@@ -123,6 +123,29 @@ step-2 sentence for a 3, or state which slice or control degrades for a 2.
 - **Express DQ rules as intent plus measurement**, not as SQL. "Every exposure
   record carries a resolvable counterparty identifier" and "count of exposure
   records with null or unmatched counterparty identifier" — not a query.
+- **Every data quality requirement must cite the paragraph that authorises it.**
+  A reader must be able to ask "why are we monitoring this?" and get an answer
+  from the regulation, not from inference. The paragraphs that speak directly to
+  monitoring are:
+  - **¶40** — the mandate to monitor at all: *"Supervisors expect banks to
+    measure and monitor the accuracy of data and to develop appropriate
+    escalation channels and action plans to be in place to rectify poor data
+    quality."* Cite this for accuracy and validity checks.
+  - **¶43** — completeness must be measured and monitored, with the impact
+    assessed where data is not entirely complete. Cite this for completeness.
+  - **¶36(c)** — reconciliation to accounting and source systems. Cite this for
+    reconciliation and consistency checks.
+  - **¶44–47** — timeliness, including the different speed expectations per risk
+    type. Cite these for timeliness checks.
+  - **¶33** — single identifiers and unified naming. Cite this for uniqueness
+    and cross-system consistency of keys.
+  Where a check is driven by the specific principle behind its CDE rather than
+  one of the above, cite that instead. Never leave a check uncited.
+- **Justify the threshold, don't just state it.** A target of zero is right for
+  identifier integrity — a null or unresolvable key is always a defect. For
+  reconciliation and valuation, ¶56 permits a **materiality** tolerance, so
+  state that the threshold is set by materiality and who sets it, rather than
+  asserting zero. If you write a number, be able to say why it is that number.
 - **Be explicit about the gaps.** Principles 8–11 concern report
   comprehensiveness, clarity, frequency and distribution. Those are reporting
   and board-governance matters that no CDE register or DQ monitor addresses.
@@ -160,14 +183,16 @@ One block per candidate:
 - **Criticality:** 1–3 per the rubric above, naming which level applies and why
 - **Driven by:** Principle N (¶NN–NN) — "short verbatim quote"
 - **Search terms:** terms and likely naming variants to look for in a catalog
-- **Data quality requirements:**
-  - *dimension* — rule intent | measurement | suggested threshold
+- **Data quality requirements:** one per line, in this order —
+  - *dimension* — rule intent | measurement | threshold **and why that
+    threshold** | **(¶NN)** the paragraph authorising the check
 
 ### 3. Cross-cutting data quality requirements
 
 **Mandatory — at least two.** Requirements that span multiple CDEs rather than
 attaching to one. Label each `XDQ-01`, `XDQ-02`, … and state which CDEs it spans,
-plus the same dimension / rule intent / measurement fields.
+plus the same fields as above **including the paragraph citation and threshold
+justification**.
 
 ### 4. Out of scope
 
@@ -179,3 +204,21 @@ above, say so and explain the split.
 
 | CDE | Name | Criticality | Principles | DQ dimensions |
 |---|---|---|---|---|
+
+---
+
+## The test this output must pass
+
+A reader who is neither a financial-services expert nor an auditor should be able
+to point at any line and ask two questions, and find the answer in the document
+itself rather than having to trust you:
+
+1. **"Why is this a critical data element?"** — answered by *why critical* (the
+   mechanism by which a risk figure goes wrong), the criticality sentence, and
+   the cited paragraphs.
+2. **"Why are we running this quality check, and why that threshold?"** —
+   answered by the rule intent, the cited paragraph authorising it, and the
+   stated basis for the threshold.
+
+If either question needs knowledge you have not written down, the entry is not
+finished.
