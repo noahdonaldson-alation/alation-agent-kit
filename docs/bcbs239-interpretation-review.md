@@ -144,6 +144,38 @@ can both drive a CDE and be out of scope — it can (a principle may require a
 data element while its reporting obligations remain unaddressable), but that has
 to be stated rather than left as an apparent contradiction.
 
+### Confirmed over 8 runs
+
+The two-run figure above was superseded by an 8-run baseline
+(`python3 scripts/compare_runs.py docs/runs/*.md`).
+
+| Measure | Result |
+|---|---|
+| Concepts appearing in **all 8** runs | **7 of 21 (33%)** |
+| CDEs per run | 12–13 (the prompt asks for 8–15 — this part works) |
+| Criticality-3 concepts that are **not** in every run | **7** |
+| Runs omitting the cross-cutting DQ section entirely | **3 of 8** |
+
+**Stable core (7):** counterparty identifier, legal entity identifier, exposure
+amount, business line, geography, industry/sector, risk classification. Note
+even risk classification's *criticality* swings between 2 and 3.
+
+**Notable losses from the earlier stable set:** position/reporting date now
+appears in only 6/8 runs (and 1 of 3 clean runs) despite being rated criticality
+3 whenever present. Transaction/instrument identifier appears in **1 of 8**.
+
+**Salvage was ruled out as a cause.** Comparing like-for-like at n=3, the
+salvaged runs score 47% and the cleanly-captured runs 56% — the same range, and
+the gap is noise at that sample size. Beware comparing sets of different sizes:
+fewer runs mechanically inflates stability because there are fewer chances for a
+concept to be absent. The 3-run figures are not comparable to the 8-run figure.
+
+**Concept bucketing matters to this measurement.** Runs name the same element
+differently ("MTM Value" vs "Mark-to-Market Value"), and counting those as
+distinct concepts overstates instability. `compare_runs.py` buckets by keyword
+and prints anything unmatched as `OTHER:` so naming drift stays visible rather
+than silently distorting the number.
+
 ### What this means
 
 Roughly 60% stability. The core is real; the tail is sampling noise. For a

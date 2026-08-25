@@ -48,6 +48,17 @@ BUCKETS: list[tuple[str, tuple[str, ...]]] = [
                                       "data source")),
     ("Risk limit / utilisation",     ("limit",)),
     ("Liquidity indicator",          ("liquidity", "cash flow", "settlement")),
+    # Added after observing them as OTHER across 8 runs. Naming varies between
+    # runs for the same concept ("MTM Value" vs "Mark-to-Market Value"), and
+    # counting those as distinct concepts overstates instability.
+    ("Market risk position / MTM",   ("mark-to-market", "mtm", "market risk position")),
+    ("Maturity / tenor",             ("maturity", "tenor")),
+    ("Off-balance-sheet indicator",  ("off-balance", "contingent exposure")),
+    ("Data owner / steward",         ("steward", "data owner")),
+    # Kept separate from the transaction identifier: a credit facility id and a
+    # trade id are adjacent but not the same thing. Worth watching whether the
+    # model treats them interchangeably.
+    ("Instrument / facility id",     ("facility identifier", "facility id")),
 ]
 
 
