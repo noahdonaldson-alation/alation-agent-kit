@@ -269,6 +269,59 @@ All three are fixed; unparseable files are now reported loudly rather than
 skipped. The general lesson: when a measurement improves, check the measuring
 device before believing it.
 
+---
+
+## v0.5.0 — can the output defend itself?
+
+The question that drove this version, from Noah: *"I am not a financial services
+expert and I am not an auditor. If we can answer 'this is why we decided to make
+these critical data elements and why we decided to implement quality checks', I
+think we are ok."*
+
+That is a better acceptance test than any stability metric, so it was made
+explicit — the prompt now closes with the two questions a reader must be able to
+answer from the document alone.
+
+**Assessment of v0.4.0 against it:** the CDE half already passed. Each element
+carried a causal mechanism (*"duplicate or mismatched counterparty records cause
+aggregated credit exposure to be either overstated or understated"*), the
+criticality decision shown as a completed sentence, and paragraph citations with
+verbatim quotes.
+
+**The DQ half failed.** Checks had dimension, intent, measurement and threshold —
+but no citation. Their authority was only inferable from the parent CDE.
+
+**Result after v0.5.0**, measured across 10 runs each:
+
+| | DQ requirement lines | Carrying a ¶ citation |
+|---|---|---|
+| v0.4.0 | 363 | 10 — **3%** |
+| v0.5.0 | 327 | 327 — **100%** |
+
+Thresholds are now argued rather than asserted:
+
+> *uniqueness* — Each counterparty maps to exactly one identifier … | Zero
+> duplicates; **any non-zero result is a structural defect, not a tolerance
+> matter, because a duplicate key causes miscounting of exposures** | **(¶33)**
+
+No regression: required coverage stayed 10/10, crit3 stayed at exactly 5 per
+run, no rating drift, cross-cutting present in all 10. The dilution risk from a
+27%-longer prompt did not materialise.
+
+### The encoding bug this uncovered
+
+Measuring citations found **zero** at first — because every captured file was
+mojibake. `requests`' `iter_lines(decode_unicode=True)` uses the response
+encoding, and `text/event-stream` carries no charset, so it fell back to
+ISO-8859-1 and double-encoded every multi-byte character: `¶` became `Â¶`, `—`
+became `â\x80\x94`. **13,334 corrupted characters across 46 run files.**
+
+Losslessly repairable (latin-1 → UTF-8), so `scripts/repair_encoding.py` fixed
+the archive and `client.stream_lines` now forces UTF-8. The uncomfortable part:
+the `â` had been visible in terminal output for hours and was dismissed as
+terminal noise. It was corrupting the paragraph citations that are the entire
+audit trail.
+
 ## Note on the plumbing
 
 The kit did its job. The prompt lives in git with a content hash, the model is

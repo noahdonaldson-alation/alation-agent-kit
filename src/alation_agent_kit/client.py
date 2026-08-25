@@ -106,6 +106,11 @@ class AlationClient:
                     return
             if not resp.ok:
                 raise AlationError("POST", url, resp.status_code, resp.text[:500])
+            # text/event-stream carries no charset, so requests falls back to
+            # ISO-8859-1 and every multi-byte character arrives double-encoded:
+            # "¶" becomes "Â¶", "—" becomes "â\x80\x94". That silently corrupts
+            # the paragraph citations this output depends on. Force UTF-8.
+            resp.encoding = "utf-8"
             yield from resp.iter_lines(decode_unicode=True)
 
     # -- convenience -------------------------------------------------------

@@ -145,6 +145,15 @@ and input-echoing output, deduplicates, and flags the file as unreliable.
 one fewer file, quietly. `run` now retries (3 attempts, backoff), and the capture
 loop reports failures by name.
 
+**6b. Check the encoding before measuring text.** A defensibility check reported
+0% of quality checks carrying a citation — because every captured file was
+mojibake. `requests` decodes `iter_lines` using the response charset, and
+`text/event-stream` has none, so it fell back to ISO-8859-1: `¶` became `Â¶`.
+13,334 corrupted characters across 46 files, and the corrupted character was
+precisely the one being counted. Worse, that `â` had been visible in terminal
+output for hours and was dismissed as terminal noise. **If you are measuring the
+presence of a symbol, verify the symbol survived capture.**
+
 **7. Bundling changes costs attribution.** v0.2.0 changed four things at once and
 stability went 33% → 77%. We cannot say which change did how much. That was an
 acceptable trade — all four were separately justified and speed mattered — but it
@@ -165,6 +174,14 @@ itself the point of trap 4.
 | v0.2.0 | 9 | **10/10** | yes — exposure 2/3, risk class 2/3 | 5–6 | 77% (10/13) |
 | v0.3.0 | 10 | **10/10** | **none** | **4, every run** | 67% (10/15) |
 | v0.4.0 | 10 | **10/10** | **none** | **5, every run** | 71% (10/14) |
+| v0.5.0 | 10 | **10/10** | **none** | **5, every run** | 71% (10/14) |
+
+v0.5.0 changed nothing in the table — by design. It was driven by a
+*defensibility* requirement rather than the metrics, and its effect shows in a
+measure the table doesn't carry: DQ requirement lines carrying a paragraph
+citation went from **3% to 100%**. A version can be a clear improvement and move
+none of your existing numbers, which is a reason to keep the acceptance test
+separate from the metric set.
 
 **v0.4.0 is the converged version**: every required concept present in every
 run, each with one consistent and correct rating. Note it does *not* have the
