@@ -67,3 +67,22 @@ changelog:
       Also resolves the driver/out-of-scope contradiction: a principle may
       appear in both, but the split must be stated.
       Measure with: python3 scripts/compare_runs.py docs/runs/*.md
+  - version: 0.3.0
+    date: 2026-08-24
+    note: >
+      v0.2.0 lifted stability from 33% to 77% (and to 100% on the required
+      categories), and eliminated all unstable criticality-3 elements. This
+      version addresses the one thing it did not fix: criticality ratings still
+      drifted between identical runs (risk classification 2 in 3 of 9 runs,
+      exposure amount 2 in 1 of 9), threes ran hot at 5-6 against a stated 3-5,
+      and level 1 was never used at all.
+      Change: replace the descriptive rubric with a decision PROCEDURE —
+      default everything to 2, promote to 3 only if the sentence "without this,
+      aggregate figure X cannot be computed at all, because ..." can be
+      completed concretely, demote to 1 if no figure is affected. Target
+      tightened to exactly 4-5 threes, and the model is told to expect
+      run-to-run consistency explicitly.
+      Hypothesis being tested: drift came from the rubric describing categories
+      without saying how to decide, so each run re-derived the boundary. If
+      ratings are still unstable after this, the next move is to stop asking for
+      a numeric rating at all and ask only "load-bearing: yes/no".

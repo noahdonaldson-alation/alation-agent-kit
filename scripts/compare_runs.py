@@ -29,6 +29,11 @@ BUCKETS: list[tuple[str, tuple[str, ...]]] = [
     # Most specific first. "Transaction Currency" must not fall into the
     # transaction-identifier bucket, so currency is tested before it, and the
     # identifier bucket requires an id-ish word rather than bare "transaction".
+    # The reconciliation key (prompt category 7) gets many names: "GL
+    # Reconciliation Key", "GL / System-of-Record Reconciliation Key",
+    # "Transaction / Instrument Identifier". Catch it first, before the lineage
+    # bucket claims anything containing "system-of-record".
+    ("Reconciliation key",           ("reconciliation key", "reconciliation")),
     ("Currency / FX rate",           ("currency", "conversion rate", "exchange rate", "fx")),
     ("Counterparty identifier",      ("counterparty",)),
     ("Legal entity identifier",      ("legal entity", "booking entity")),
@@ -44,8 +49,9 @@ BUCKETS: list[tuple[str, tuple[str, ...]]] = [
                                       "trade id", "deal id", "position id")),
     ("Collateral / netting",         ("collateral", "netting")),
     ("Calculated risk measure",      ("risk measure", "risk metric", "calculated")),
-    ("Source system / lineage",      ("source system", "system of record", "lineage",
-                                      "data source")),
+    ("Source system / lineage",      ("source system", "system of record",
+                                      "system-of-record", "lineage", "data source",
+                                      "provenance", "manual", "euc")),
     ("Risk limit / utilisation",     ("limit",)),
     ("Liquidity indicator",          ("liquidity", "cash flow", "settlement")),
     # Added after observing them as OTHER across 8 runs. Naming varies between
@@ -70,9 +76,33 @@ def bucket_for(name: str) -> str:
     return f"OTHER: {name.strip()}"
 
 
+# Tolerant of markdown emphasis and trailing commentary in the criticality cell:
+# runs variously write `3`, `**3**`, and `3 — invalidates the figure`. Demanding a
+# bare digit silently dropped two of nine runs.
 ROW = re.compile(
-    r"\|\s*(CDE-\d+)\s*\|\s*([^|]+?)\s*\|\s*(\d)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|"
+    r"\|\s*(CDE-\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|"
 )
+
+
+def parse_criticality(cell: str) -> int | None:
+    """First 1-3 digit in the cell, ignoring bold markers and prose."""
+    for m in re.finditer(r"\d+", cell):
+        v = int(m.group())
+        if 1 <= v <= 3:
+            return v
+    return None
+
+
+def parse_principles(cell: str) -> list[int]:
+    """Principle numbers only.
+
+    Cells look like `2, 4` but also `2 (¶33), 4 (¶41-43)` and `P2 (¶33)`.
+    Strip parentheticals first, or paragraph numbers get read as principles.
+    """
+    stripped = re.sub(r"\([^)]*\)", "", cell)
+    return sorted({
+        int(m) for m in re.findall(r"\d+", stripped) if 1 <= int(m) <= 14
+    })
 
 
 def parse_run(path: Path) -> dict:
@@ -101,10 +131,10 @@ def parse_run(path: Path) -> dict:
             "ref": ref,
             "name": name.strip(),
             "bucket": bucket_for(name),
-            "criticality": int(crit),
-            "principles": sorted({int(p) for p in re.findall(r"\d+", principles)}),
+            "criticality": parse_criticality(crit),
+            "principles": parse_principles(principles),
             "dq_dimensions": sorted(
-                d.strip().lower() for d in dims.split(",") if d.strip()
+                d.strip().lower().strip("*") for d in dims.split(",") if d.strip()
             ),
         })
 
@@ -133,8 +163,22 @@ def main() -> int:
     ap.add_argument("--json", help="Also write the comparison as JSON")
     args = ap.parse_args()
 
-    runs = [parse_run(Path(f)) for f in args.files]
-    runs = [r for r in runs if r["cdes"]] or runs
+    all_runs = [parse_run(Path(f)) for f in args.files]
+
+    # NEVER silently drop a file. Unparseable output is a finding, not noise —
+    # dropping it once hid two of nine runs and inflated the stability number.
+    unparsed = [r for r in all_runs if not r["cdes"]]
+    runs = [r for r in all_runs if r["cdes"]]
+    if unparsed:
+        print(f"!! {len(unparsed)} of {len(all_runs)} files yielded NO parseable "
+              f"summary table and are excluded:")
+        for r in unparsed:
+            print(f"     {r['file']}  ({r['rows_found']} candidate rows)")
+        print("   Check the summary-table format in those files before trusting "
+              "the numbers below.\n")
+    if not runs:
+        print("No parseable runs.")
+        return 1
     n = len(runs)
     if n < 2:
         print("Need at least 2 parseable runs to compare.")

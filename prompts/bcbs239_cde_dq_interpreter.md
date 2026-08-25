@@ -73,19 +73,36 @@ breadth: a well-argued register of 10 is stronger than a thin list of 15.
 
 ## Criticality
 
-Rate 1–3 using this test, not general importance:
+Rate 1–3 by applying **one question**: if this element were wrong or missing,
+would an aggregated risk figure be **invalid**, or merely **less useful**?
 
-- **3** — aggregation or reconciliation is **impossible** without it. Its
-  failure invalidates an aggregate figure rather than degrading it.
-- **2** — a required reporting dimension or slice degrades. The aggregate is
-  still produced, but incomplete, unsliceable, or unreconcilable in part.
-- **1** — supporting context. It improves interpretation, but no aggregate
-  figure is wrong without it.
+- **3 — the figure is invalid.** You cannot produce a correct aggregate at all.
+  Reserved for elements that are structurally load-bearing: the keys that make
+  aggregation possible, the amount being aggregated, and the date the aggregate
+  is stated as of. **A figure cannot be wrong in this way for more than a handful
+  of elements**, so 3 is scarce by definition.
+- **2 — the figure is produced but cannot be sliced, reconciled, or trusted in
+  part.** Aggregation dimensions, classification schemes, provenance, and
+  mitigants live here. Most elements are 2.
+- **1 — supporting context.** Improves interpretation; no aggregate is wrong
+  without it. If nothing in your register is a 1, say so rather than promoting
+  something to 2 to fill the scale.
 
-Expect roughly **3 to 5** at criticality 3. If more than 5 come out as 3, the
-test is not being applied — go back and ask which failures truly invalidate a
-figure rather than degrade it. State the rubric level you applied in the
-justification.
+Apply it this way, in order:
+
+1. Rate every element **2** by default.
+2. Promote to **3** only if you can complete this sentence concretely: *"Without
+   this element, the aggregate figure X cannot be computed at all, because …"*
+   If the sentence comes out as "it would be less accurate" or "less complete",
+   it is a 2.
+3. Demote to **1** if no aggregate figure is affected.
+
+**Target: exactly 4 or 5 elements at criticality 3.** If you have more, you have
+promoted degradation to invalidity — re-apply step 2 and demote the weakest.
+
+Be deliberately consistent between runs: the same element assessed against the
+same regulation should get the same rating. In the justification, quote the
+step-2 sentence for a 3, or state which slice or control degrades for a 2.
 
 ## Rules
 

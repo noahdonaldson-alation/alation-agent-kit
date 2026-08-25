@@ -213,6 +213,62 @@ and was not captured to a file — which is itself the argument for always using
 
 ---
 
+---
+
+## v0.2.0 result — the revision worked
+
+Prompt sha `626e58ee23ef`, 10 runs attempted, 9 captured.
+`python3 scripts/compare_runs.py docs/runs/v0.2.0/*.md`
+
+| Measure | v0.1.0 (n=8) | v0.2.0 (n=9) |
+|---|---|---|
+| Concepts in every run | 7/21 — **33%** | 10/13 — **77%** |
+| Unstable criticality-3 concepts | 7 | **0** |
+| Reconciliation key present | 1/8 | **9/9** |
+| Lineage / provenance present | 3/8 | **9/9** |
+| Position / reporting date | 6/8 | **9/9** |
+| Cross-cutting section | missing in 3/8 | **present in 9/9** (2–3 each) |
+| CDEs per run | 12–13 (asked 8–15) | 11–12 (asked 10–12) |
+
+**The remaining instability is by design.** The only three concepts that vary —
+currency/FX, collateral/netting, risk limits — are exactly the ones the prompt
+names as discretionary. All eight **required** categories appear in all nine
+runs. So stability on the mandated set is 100%, and 77% is the figure including
+permitted variation. Worth remembering when reading that number later.
+
+What this says about the method: the four changes were each aimed at a measured
+failure, and each measured failure closed. Naming the required categories was
+the highest-leverage change by a wide margin.
+
+### Still open after v0.2.0
+
+1. **Criticality still drifts, less.** Risk classification is rated 2 in three
+   of nine runs and 3 in six; exposure amount came out 2 once. The rubric
+   narrowed this but did not settle it.
+2. **Level 1 is never used** — `crit1=0` in all nine runs. Defensible, since
+   anything in a 10–12 register should be critical, but it means the scale is
+   effectively binary. Either drop level 1 or name a category that belongs there.
+3. **Threes run hot** — 5–6 per run against a stated expectation of 3–5.
+4. **One run in ten produced no output at all** (`run05`). Cause unknown;
+   worth watching whether it recurs before treating the pipeline as reliable.
+
+### Measurement discipline — three tool bugs found this round
+
+The comparison tool was wrong in ways that flattered the result, and this is
+worth recording because the same traps apply to any eval harness:
+
+- **Criticality cells written as `**3**`** (bold) failed a bare-digit regex, so
+  two runs parsed as zero CDEs.
+- **Files that parsed to zero CDEs were silently dropped**, so the run showed
+  "Comparing 7 runs" when nine existed. A tool that hides unparseable output
+  will make a bad prompt look good.
+- **Paragraph numbers were read as principle numbers** — a cell reading
+  `2 (¶33), 4 (¶41)` yielded principles {2, 4, 33, 41}.
+
+All three are fixed; unparseable files are now reported loudly rather than
+skipped. The general lesson: when a measurement improves, check the measuring
+device before believing it.
+
 ## Note on the plumbing
 
 The kit did its job. The prompt lives in git with a content hash, the model is
