@@ -37,7 +37,17 @@ BUCKETS: list[tuple[str, tuple[str, ...]]] = [
     ("Currency / FX rate",           ("currency", "conversion rate", "exchange rate", "fx")),
     ("Counterparty identifier",      ("counterparty",)),
     ("Legal entity identifier",      ("legal entity", "booking entity")),
-    ("Exposure amount",              ("exposure amount", "notional", "carrying value")),
+    # Net/post-mitigation exposure is a distinct element from gross exposure —
+    # runs increasingly propose both — so it must be matched first, and its
+    # several namings ("Net Exposure / Post-Mitigation Amount", "Net /
+    # Collateralised Exposure Amount") folded together.
+    ("Net / post-mitigation exposure", ("net exposure", "post-mitigation",
+                                        "net /", "collateralised exposure")),
+    ("Exposure amount",              ("exposure amount", "notional", "carrying value",
+                                      "gross exposure")),
+    # Maturity before the generic date bucket: "Contractual Maturity Date" is a
+    # tenor element, not the as-of date every aggregate is stated against.
+    ("Maturity / tenor",             ("maturity", "tenor")),
     ("Position / reporting date",    ("date",)),
     ("Risk classification",          ("risk classification", "risk type")),
     ("Business line",                ("business line", "segment")),
@@ -61,6 +71,7 @@ BUCKETS: list[tuple[str, tuple[str, ...]]] = [
     ("Maturity / tenor",             ("maturity", "tenor")),
     ("Off-balance-sheet indicator",  ("off-balance", "contingent exposure")),
     ("Data owner / steward",         ("steward", "data owner")),
+    ("Market risk position / MTM",   ("mark-to-market", "mtm", "market risk position")),
     # Kept separate from the transaction identifier: a credit facility id and a
     # trade id are adjacent but not the same thing. Worth watching whether the
     # model treats them interchangeably.
@@ -219,9 +230,27 @@ def main() -> int:
 
     print(f"\n{'='*74}\nSTABLE — present in all {n} runs ({len(core)})\n{'='*74}")
     for b in sorted(core):
-        crits = [x["criticality"] for x in core[b]]
-        drift = "" if len(set(crits)) == 1 else f"   <- criticality varies {crits}"
-        print(f"  {b:32} crit={crits[0] if len(set(crits))==1 else '/'.join(map(str,crits))}{drift}")
+        # Distinguish two very different things that both produce mixed ratings:
+        #   (a) the same concept rated differently BETWEEN runs -> real drift
+        #   (b) several distinct elements sharing a bucket WITHIN one run, e.g.
+        #       gross vs net exposure -> not drift, and arguably good precision
+        per_run: dict[str, list[int]] = defaultdict(list)
+        for x in core[b]:
+            per_run[x["run"]].append(x["criticality"])
+
+        split = {r: c for r, c in per_run.items() if len(c) > 1}
+        singles = [c[0] for c in per_run.values() if len(c) == 1]
+        drift = len(set(singles)) > 1
+
+        note = ""
+        if drift:
+            note = f"   <- DRIFT between runs: {sorted(set(singles))}"
+        elif split:
+            note = (f"   ({len(split)} run(s) split this into "
+                    f"{max(len(c) for c in split.values())} elements — not drift)")
+
+        shown = sorted(set(singles)) or sorted({c for cs in per_run.values() for c in cs})
+        print(f"  {b:32} crit={'/'.join(map(str, shown))}{note}")
 
     print(f"\n{'='*74}\nUNSTABLE — missing from at least one run ({len(partial)})\n{'='*74}")
     if not partial:

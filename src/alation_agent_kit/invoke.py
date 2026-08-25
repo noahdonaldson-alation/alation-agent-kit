@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import requests
+
 from .client import AI_V1, AlationClient, AlationError
 
 CHAT_PATH = f"{AI_V1}/chats/agent"
@@ -102,12 +104,48 @@ def run_agent_stream(
     chat_id: str | None = None,
     verbose: bool = False,
     raw_path: str | None = None,
+    attempts: int = 3,
 ) -> str:
-    """Invoke an agent over SSE and return the accumulated text.
+    """Invoke an agent over SSE and return the accumulated text, with retries.
 
     Preferred over run_agent(): the task-polling endpoint deletes tasks on
     success, so a completed run 404s.
+
+    Long generations occasionally die with a read timeout partway through the
+    stream. Retrying is safe — each attempt is an independent generation — and
+    without it a batch of runs quietly ends up with fewer results than requested.
     """
+    last_err: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return _stream_once(
+                client, agent_id, payload, chat_id, verbose, raw_path
+            )
+        except (requests.exceptions.RequestException, IncompleteStream) as err:
+            last_err = err
+            if attempt < attempts:
+                wait = 5 * attempt
+                print(f"  ! stream failed ({type(err).__name__}: {str(err)[:80]}); "
+                      f"retry {attempt + 1}/{attempts} in {wait}s")
+                time.sleep(wait)
+    raise AgentRunError(
+        f"Stream failed after {attempts} attempts. Last error: {last_err}"
+    ) from last_err
+
+
+class IncompleteStream(RuntimeError):
+    """Stream ended without producing text — treated as retryable."""
+
+
+def _stream_once(
+    client: AlationClient,
+    agent_id: str,
+    payload: dict[str, Any],
+    chat_id: str | None = None,
+    verbose: bool = False,
+    raw_path: str | None = None,
+) -> str:
+    """One streaming attempt. See run_agent_stream for the retry wrapper."""
     path = f"{CHAT_PATH}/{agent_id}/stream"
     if chat_id:
         path += f"?chat_id={chat_id}"
@@ -194,9 +232,11 @@ def run_agent_stream(
         )
 
     if not text.strip():
-        raise AgentRunError(
-            "Stream produced no text. The event shape is undocumented — re-run with "
-            "--raw to dump the stream and we can adjust the parser."
+        # Retryable: an empty stream is usually a transient failure rather than
+        # a parser problem, and the retry wrapper will try again.
+        raise IncompleteStream(
+            "stream produced no text (if this repeats, capture it with --raw "
+            "and check the event shape)"
         )
     return text
 

@@ -132,7 +132,8 @@ def cmd_run(args) -> int:
     else:
         raw_path = f"{args.output}.raw-stream.txt" if (args.raw and args.output) else None
         text = run_agent_stream(
-            st.c, agent_id, payload, verbose=args.verbose, raw_path=raw_path
+            st.c, agent_id, payload, verbose=args.verbose, raw_path=raw_path,
+            attempts=args.retries,
         )
 
     if args.output:
@@ -184,6 +185,9 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("-v", "--verbose", action="store_true", help="Echo raw SSE lines")
     pr.add_argument("--raw", action="store_true",
                     help="Also save the raw SSE stream next to --output (for debugging)")
+    pr.add_argument("--retries", type=int, default=3,
+                    help="Stream attempts before giving up (default 3). Long "
+                         "generations occasionally die with a read timeout.")
     pr.add_argument("--poll", action="store_true",
                     help="Use the legacy /call + task-polling path (usually 404s on success)")
     pr.set_defaults(func=cmd_run)

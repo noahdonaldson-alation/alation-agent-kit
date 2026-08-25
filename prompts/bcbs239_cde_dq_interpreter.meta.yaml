@@ -86,3 +86,21 @@ changelog:
       without saying how to decide, so each run re-derived the boundary. If
       ratings are still unstable after this, the next move is to stop asking for
       a numeric rating at all and ask only "load-bearing: yes/no".
+      RESULT (10 runs): hypothesis confirmed. Criticality drift eliminated
+      entirely - every stable concept holds one rating across all 10 runs, and
+      crit3 came out as exactly 4 in every run. One regression, see v0.4.0.
+  - version: 0.4.0
+    date: 2026-08-24
+    note: >
+      One-line correction to v0.3.0. The promotion test read "without this, the
+      aggregate figure cannot be COMPUTED", and taken literally that demoted the
+      reconciliation key to criticality 2 - you can compute an aggregate without
+      it, you just cannot prove it. The key then fell out of 1 of 10 runs
+      entirely, breaking the 8/8 required-category coverage v0.2.0 had achieved.
+      Change: the promotion test now reads "cannot be computed OR cannot be
+      reconciled to the system of record", grounded in the paragraph 36(c)
+      argument that an unverifiable figure is not a compliant one, and the
+      reconciliation key is named explicitly among the expected 3s.
+      Expected: reconciliation key back to 10/10 at criticality 3, crit3 rising
+      from 4 to 5 per run (still inside the 4-5 target), and no loss of the
+      rating stability v0.3.0 gained.
