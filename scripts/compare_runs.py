@@ -22,6 +22,9 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from alation_agent_kit.store import extract_json  # noqa: E402
+
 # Concept buckets. Runs name the same element differently — "Reporting Date /
 # Position Date" vs "Position / Valuation Date (As-of Date)" — so match on
 # keywords rather than exact strings. Order matters: first match wins.
@@ -74,10 +77,8 @@ BUCKETS: list[tuple[str, tuple[str, ...]]] = [
     # runs for the same concept ("MTM Value" vs "Mark-to-Market Value"), and
     # counting those as distinct concepts overstates instability.
     ("Market risk position / MTM",   ("mark-to-market", "mtm", "market risk position")),
-    ("Maturity / tenor",             ("maturity", "tenor")),
     ("Off-balance-sheet indicator",  ("off-balance", "contingent exposure")),
     ("Data owner / steward",         ("steward", "data owner")),
-    ("Market risk position / MTM",   ("mark-to-market", "mtm", "market risk position")),
     # Kept separate from the transaction identifier: a credit facility id and a
     # trade id are adjacent but not the same thing. Worth watching whether the
     # model treats them interchangeably.
@@ -145,16 +146,8 @@ def parse_json_run(path: Path, text: str) -> dict | None:
     Returns None if the file isn't that shape, so the caller falls back to the
     markdown summary-table parser used by v0.1.0-v0.5.0 runs.
     """
-    stripped = text.strip()
-    if stripped.startswith("```"):  # tolerate fenced JSON
-        stripped = re.sub(r"^```(?:json)?|```$", "", stripped, flags=re.M).strip()
-    if not stripped.startswith("{"):
-        return None
-    try:
-        doc = json.loads(stripped)
-    except json.JSONDecodeError:
-        return None
-    if "cde_candidates" not in doc:
+    doc = extract_json(text)
+    if not isinstance(doc, dict) or "cde_candidates" not in doc:
         return None
 
     cdes = [{

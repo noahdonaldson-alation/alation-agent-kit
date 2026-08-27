@@ -72,6 +72,67 @@ def read_json(path: str | Path) -> Any:
     return json.loads(Path(path).read_text())
 
 
+def extract_json(text: str) -> dict | None:
+    """Pull the intended JSON object out of an agent response.
+
+    Tool-using agents narrate their work before answering, and often fence the
+    result, so a response is commonly:
+
+        I checked the catalog and found ... Let me compile the JSON.
+        ```json
+        { ... }
+        ```
+
+    Rather than fight that with prompt wording alone, find the largest balanced
+    `{...}` span that parses. Largest, not first, because a narration sometimes
+    contains a small illustrative object before the real answer.
+    """
+    if not text:
+        return None
+
+    stripped = text.strip()
+    try:  # fast path: the whole response is the object
+        doc = json.loads(stripped)
+        return doc if isinstance(doc, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    best: dict | None = None
+    best_len = 0
+    for start in (i for i, ch in enumerate(text) if ch == "{"):
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    span = text[start:i + 1]
+                    if len(span) > best_len:
+                        try:
+                            doc = json.loads(span)
+                        except json.JSONDecodeError:
+                            pass
+                        else:
+                            if isinstance(doc, dict):
+                                best, best_len = doc, len(span)
+                    break
+    return best
+
+
 def llm_identity(row: dict) -> dict:
     """Pull provider / friendly name / model-reference strings out of an LLM row.
 

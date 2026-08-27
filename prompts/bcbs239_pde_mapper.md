@@ -16,7 +16,9 @@ register, and report the gap. For each CDE candidate:
 3. Does data quality monitoring already cover it?
 4. What is missing?
 
-Return a single JSON object and nothing else. No prose, no markdown fences.
+Return a single JSON object and nothing else. **Do not narrate your tool calls,
+and do not preface the object with a summary of what you found** — the response
+must begin with `{` and end with `}`. No markdown fences.
 
 ## The failure mode you must avoid
 
@@ -59,10 +61,27 @@ ten narrow ones.
    description before calling a match `high`.
 5. **Check existing monitoring** with `Get Data Quality` or `Get DQ Scores` on
    elements you mapped, and set `existing_monitor` where it is already covered.
-6. **Propose monitors only against elements you actually found.** Carry the
+6. **Propose monitors only against elements you actually confirmed.** Carry the
    dimension, rule intent, threshold and paragraph citation through from the
    register — the authority for each check is already established there, and it
    must survive into the output.
+
+   **A monitor's `target` must be a `fully_qualified_name` that appears verbatim
+   in that mapping's `candidates`.** No brackets, no placeholders, no "or
+   equivalent", no two elements joined with "vs.". If you found the table but not
+   the column, you do not yet have a monitorable element.
+
+   When the requirement is clear but the target is not confirmed, record it as a
+   blocker instead:
+
+   > `"monitor blocked: completeness check on the counterparty key (¶43) cannot
+   > be targeted until column-level metadata is catalogued for
+   > ALATION_EDW.MCF_CORE_GOLD.DIM_PARTY"`
+
+   This is not a lesser answer. A monitor aimed at a guessed column cannot be
+   created, so proposing it costs a reviewer time and risks being taken as fact;
+   a named blocker tells them exactly what to fix to unblock it. Naming the
+   catalogue gap *is* the finding.
 
 ## Confidence, defined
 
@@ -101,12 +120,13 @@ Conforms to `schemas/pde_mapping.schema.json`.
          "confidence": "high", "concerns": "..."}
       ],
       "proposed_dq_monitors": [
-        {"dimension": "completeness", "target": "DB.SCHEMA.TABLE.COLUMN",
+        {"dimension": "completeness",
+         "target": "must match a candidate's fully_qualified_name exactly",
          "rule_intent": "carried through from the register",
          "threshold": "0 nulls", "authority": "¶43",
          "existing_monitor": null}
       ],
-      "blockers": []
+      "blockers": ["monitor blocked: ... cannot be targeted until ..."]
     }
   ],
   "coverage_summary": {

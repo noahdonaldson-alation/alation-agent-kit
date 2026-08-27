@@ -69,3 +69,39 @@ changelog:
       back "high" confidence, which would mean the confidence definition is not
       biting; (3) empty searched_for on not_found entries, which would defeat the
       whole audit trail; (4) action count per run, for cost.
+    result: >
+      First live run against finance-industry: all four watch items PASSED.
+      Zero invented FQNs — all 14 candidates were real table-level objects.
+      Confidence came back 13 medium / 1 low / zero high, correctly, because
+      only tables could be confirmed. searched_for was populated on all 11
+      mappings (13-20 terms each) including the six not_found. Every not_found
+      carried 3-4 blockers. Coverage: 0 mapped, 5 partial, 6 not found, 0
+      already existing.
+      It also diagnosed the environment accurately: no column-level metadata is
+      indexed for the only candidate risk data source, which is why nothing
+      reached "mapped". Table names found were genuinely banking-shaped
+      (FACT_LOAN, DIM_PARTY, GL_MASTER, FACT_TRANSACTION, LOAN_REG_CATEGORY).
+  - version: 0.2.0
+    date: 2026-08-24
+    note: >
+      One behavioural gap from the first live run: it proposed 11 monitors, 10
+      of which targeted unconfirmed columns written as placeholders —
+      "[PARTY_ID or equivalent — column name unconfirmed]". Honestly labelled,
+      but not actionable, since a monitor needs a real column. v0.1.0 said
+      "propose monitors only against elements you actually found", and it had
+      found tables, so it proposed against guessed columns.
+      Changes:
+        1. A monitor's target must match a candidate's fully_qualified_name
+           verbatim — no brackets, placeholders, "or equivalent", or two
+           elements joined with "vs.".
+        2. Where the requirement is clear but the target is not confirmed, it
+           goes in blockers as "monitor blocked: ... until ...", with the
+           rationale that naming the catalogue gap IS the finding.
+        3. Told explicitly not to narrate tool calls before the JSON. The first
+           run prefaced the object with a prose summary and fenced it; the kit's
+           extract_json now tolerates that, but clean output is preferable.
+      The structural validator already enforced rule 1 — this makes the prompt
+      agree with the check rather than the check catching the prompt.
+      Expected: monitor count drops from 11 to near zero until column metadata
+      is catalogued, with the requirements reappearing as named blockers. That is
+      the correct answer for this instance, not a regression.

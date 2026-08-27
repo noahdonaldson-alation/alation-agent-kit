@@ -16,20 +16,102 @@ import argparse
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 DEFAULT_SCHEMA = "schemas/cde_dq_requirements.schema.json"
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from alation_agent_kit.store import extract_json  # noqa: E402
+
+
 def load_json(text: str):
-    s = text.strip()
-    if s.startswith("```"):
-        s = re.sub(r"^```(?:json)?|```$", "", s, flags=re.M).strip()
-    return json.loads(s)
+    """Tolerate narration and fences around the object — agents that call tools
+    routinely explain themselves before answering."""
+    doc = extract_json(text)
+    if doc is None:
+        raise json.JSONDecodeError("no JSON object found in response", text[:200], 0)
+    return doc
 
 
 def structural_checks(doc: dict) -> list[str]:
-    """Rules JSON Schema cannot express."""
+    """Rules JSON Schema cannot express. Dispatches on document shape — the
+    pipeline has two contracts and they have different invariants."""
+    if "mappings" in doc:
+        return mapping_checks(doc)
+    return register_checks(doc)
+
+
+def mapping_checks(doc: dict) -> list[str]:
+    """Step 3: the gap analysis. The invariant that matters most is that a
+    search is recorded even when it found nothing — otherwise a missed match is
+    indistinguishable from an absent element."""
+    problems: list[str] = []
+    maps = doc.get("mappings") or []
+    declared = (doc.get("source_register") or {}).get("cde_count")
+
+    if declared and declared != len(maps):
+        problems.append(
+            f"register declares {declared} CDEs but only {len(maps)} mappings "
+            "— every register entry needs a mapping, including not_found ones"
+        )
+
+    refs = [m.get("cde_ref") for m in maps]
+    if len(set(refs)) != len(refs):
+        problems.append("duplicate cde_ref in mappings")
+
+    for m in maps:
+        ref = m.get("cde_ref", "?")
+        status = m.get("status")
+        cands = m.get("candidates") or []
+
+        if not (m.get("searched_for") or []):
+            problems.append(f"{ref}: searched_for is empty — no record that a search happened")
+        if status in ("mapped", "partial") and not cands:
+            problems.append(f"{ref}: status {status!r} but no candidates")
+        if status == "not_found" and cands:
+            problems.append(f"{ref}: status not_found but {len(cands)} candidate(s) listed")
+        if status == "not_found" and not (m.get("blockers") or []):
+            problems.append(f"{ref}: not_found without any blockers explaining why")
+        if status == "already_exists" and not m.get("existing_cde"):
+            problems.append(f"{ref}: status already_exists but existing_cde not set")
+
+        # A monitor must target something that was actually found.
+        found = {c.get("fully_qualified_name") for c in cands}
+        for mon in m.get("proposed_dq_monitors") or []:
+            if not cands:
+                problems.append(f"{ref}: proposes a monitor with no candidate element")
+                break
+            if mon.get("target") and mon["target"] not in found:
+                problems.append(
+                    f"{ref}: monitor targets {mon['target']!r}, which is not among "
+                    "this mapping's candidates"
+                )
+            if not (mon.get("authority") or "").strip():
+                problems.append(f"{ref}: a {mon.get('dimension')} monitor has no authority")
+
+        for c in cands:
+            if c.get("confidence") == "high" and len((c.get("why_matched") or "")) < 40:
+                problems.append(
+                    f"{ref}: 'high' confidence on {c.get('fully_qualified_name')} with a "
+                    "thin why_matched — high requires name plus type or description"
+                )
+
+    # Summary must agree with the mappings it summarises.
+    summ = doc.get("coverage_summary") or {}
+    actual = Counter(m.get("status") for m in maps)
+    for key in ("mapped", "partial", "not_found", "already_exists"):
+        if key in summ and summ[key] != actual.get(key, 0):
+            problems.append(
+                f"coverage_summary.{key}={summ[key]} but {actual.get(key, 0)} mappings "
+                f"have that status"
+            )
+    return problems
+
+
+def register_checks(doc: dict) -> list[str]:
+    """Step 2: the requirements register."""
     problems: list[str] = []
     cdes = doc.get("cde_candidates") or []
     refs = {c.get("ref") for c in cdes}

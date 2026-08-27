@@ -1,5 +1,6 @@
 {
   "agents": {
-    "bcbs239_cde_dq_interpreter": "91164f6f-5ef8-4ea2-803f-4daf34a78951"
+    "bcbs239_cde_dq_interpreter": "91164f6f-5ef8-4ea2-803f-4daf34a78951",
+    "bcbs239_pde_mapper": "17f3bb0b-a17d-491e-9ace-05fb888af9b7"
   }
 }
