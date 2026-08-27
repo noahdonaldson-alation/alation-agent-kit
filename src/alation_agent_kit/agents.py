@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .client import AI_V1, AlationClient
+from .client import AI_V1, AlationClient, AlationError
 from .store import Lockfile, canonicalize_agent, llm_identity
 
 AGENT_PATH = f"{AI_V1}/config/agent"
@@ -205,7 +205,13 @@ class AgentStudio:
         # and `tools`; PATCH/POST want `llm_config_id` and `tool_config_ids`
         # (instance UUIDs). Translate here so a model or tool change in the file
         # actually takes effect instead of silently no-op'ing.
-        if existing_id and not dry_run:
+        #
+        # This runs for CREATE as well as UPDATE. /config/agent/import demands
+        # full inline tool definitions (description, function_name, tool_type) —
+        # it is built for seeding an instance that lacks the tools. When the
+        # tools already exist, POST /config/agent with resolved UUIDs is the
+        # right path, and it keeps create and update speaking the same shape.
+        if not dry_run:
             if export_doc.get("llm") and "llm_config_id" not in patch_body:
                 llm_id = self.resolve_llm_config_id(export_doc["llm"])
                 if llm_id:
@@ -252,7 +258,7 @@ class AgentStudio:
         patch_body = {k: v for k, v in patch_body.items() if v is not None}
 
         if dry_run:
-            action = f"PATCH {existing_id}" if existing_id else "CREATE (import)"
+            action = f"PATCH {existing_id}" if existing_id else "CREATE"
             print(f"[dry-run] {action} agent {name!r}")
             print(f"[dry-run] fields: {sorted(patch_body)}")
             return {"dry_run": True, "action": action, "name": name}
@@ -262,10 +268,31 @@ class AgentStudio:
             print(f"Updated agent {name!r} (id={existing_id})")
             return updated
 
-        result = self.import_agent(export_doc)
-        agent = result.get("agent", result) if isinstance(result, dict) else result
-        print(f"Created agent {name!r} (id={agent.get('id')})")
-        return result
+        # Create via the config path, which takes resolved UUIDs. Falls back to
+        # /import only if the config path rejects the body — import needs full
+        # inline tool definitions, so it suits cross-instance seeding rather
+        # than creating against an instance that already has the tools.
+        missing = [f for f in ("prompt", "llm_config_id") if not patch_body.get(f)]
+        if missing:
+            raise RuntimeError(
+                f"Cannot create agent {name!r}: missing {', '.join(missing)}. "
+                "A create needs a prompt and a resolvable llm — check `list llms` "
+                "and the file's llm block."
+            )
+        try:
+            created = self.c.post(AGENT_PATH, json_body=patch_body)
+        except AlationError as err:
+            print(f"  ! POST {AGENT_PATH} failed ({err.status}); trying /import")
+            result = self.import_agent(export_doc)
+            agent = result.get("agent", result) if isinstance(result, dict) else result
+            print(f"Created agent {name!r} via import (id={agent.get('id')})")
+            return result
+
+        agent_id = created.get("id") if isinstance(created, dict) else None
+        if agent_id:
+            self.lock.set("agents", name, agent_id)
+        print(f"Created agent {name!r} (id={agent_id})")
+        return created
 
     def delete_agent(self, name: str) -> None:
         agent_id = self.resolve_agent_id(name)
