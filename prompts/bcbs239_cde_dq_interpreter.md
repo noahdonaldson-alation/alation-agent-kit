@@ -110,8 +110,10 @@ step-2 sentence for a 3, or state which slice or control degrades for a 2.
 ## Rules
 
 - **Cite paragraphs, not pages.** Every claim ties to numbered paragraphs, with
-  a verbatim quote of 300 characters or fewer. Paragraph numbers are stable
-  across BCBS reprints; page numbers are not.
+  a verbatim quote of **one complete sentence** — up to about 450 characters.
+  Do not truncate mid-sentence to hit a length; a clipped quote is weaker
+  evidence than a slightly longer one. Paragraph numbers are stable across BCBS
+  reprints; page numbers are not.
 - **Bank-facing principles only.** Principles 12–14 address supervisors. Do not
   derive requirements from them.
 - **No environment guessing.** You do not know their systems, schemas, or

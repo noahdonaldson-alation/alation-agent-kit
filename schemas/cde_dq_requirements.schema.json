@@ -3,18 +3,34 @@
   "title": "BCBS 239 -> CDE and DQ requirements (pipeline step 2 output)",
   "description": "Interpretation only. Carries no catalog object ids, table names or column names - those are step 3's job, produced by matching search_terms against a real catalog. Every field that asserts something about the regulation carries a paragraph citation, so the audit trail survives the handoff.",
   "type": "object",
-  "required": ["regulation", "cde_candidates", "cross_cutting_dq", "out_of_scope"],
+  "required": [
+    "regulation",
+    "cde_candidates",
+    "cross_cutting_dq",
+    "out_of_scope"
+  ],
   "additionalProperties": false,
   "properties": {
     "regulation": {
       "type": "object",
-      "required": ["id", "source_url"],
+      "required": [
+        "id",
+        "source_url"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "const": "BCBS239" },
-        "title": { "type": "string" },
-        "published": { "type": "string" },
-        "source_url": { "type": "string" },
+        "id": {
+          "const": "BCBS239"
+        },
+        "title": {
+          "type": "string"
+        },
+        "published": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
         "scope_note": {
           "type": "string",
           "description": "Who the regulation applies to, in one or two sentences"
@@ -26,11 +42,19 @@
       "description": "What the regulation is trying to achieve",
       "items": {
         "type": "object",
-        "required": ["objective", "paragraphs"],
+        "required": [
+          "objective",
+          "paragraphs"
+        ],
         "additionalProperties": false,
         "properties": {
-          "objective": { "type": "string", "minLength": 20 },
-          "paragraphs": { "$ref": "#/$defs/paragraphs" }
+          "objective": {
+            "type": "string",
+            "minLength": 20
+          },
+          "paragraphs": {
+            "$ref": "#/$defs/paragraphs"
+          }
         }
       }
     },
@@ -41,14 +65,27 @@
       "items": {
         "type": "object",
         "required": [
-          "ref", "name", "definition", "why_critical",
-          "criticality", "criticality_rationale",
-          "driven_by", "search_terms", "dq_requirements"
+          "ref",
+          "name",
+          "definition",
+          "why_critical",
+          "criticality",
+          "criticality_rationale",
+          "driven_by",
+          "search_terms",
+          "dq_requirements"
         ],
         "additionalProperties": false,
         "properties": {
-          "ref": { "type": "string", "pattern": "^CDE-[0-9]{2}$" },
-          "name": { "type": "string", "minLength": 3, "maxLength": 120 },
+          "ref": {
+            "type": "string",
+            "pattern": "^CDE-[0-9]{2}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 120
+          },
           "definition": {
             "type": "string",
             "minLength": 30,
@@ -62,12 +99,15 @@
           "risk_types": {
             "type": "array",
             "items": {
-              "type": "string",
-              "enum": ["credit", "market", "liquidity", "operational",
-                       "counterparty", "concentration", "cross-cutting"]
-            }
+              "type": "string"
+            },
+            "description": "Free text. Common values: credit, market, liquidity, operational, counterparty, concentration, sovereign, cross-cutting."
           },
-          "criticality": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "criticality": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
           "criticality_rationale": {
             "type": "string",
             "minLength": 30,
@@ -76,20 +116,30 @@
           "driven_by": {
             "type": "array",
             "minItems": 1,
-            "items": { "$ref": "#/$defs/citation" }
+            "items": {
+              "$ref": "#/$defs/citation"
+            }
           },
           "search_terms": {
             "type": "array",
             "minItems": 3,
             "description": "Terms and likely physical naming variants for step 3 to match against a catalog. A hypothesis, not a claim that these exist.",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "dq_requirements": {
             "type": "array",
             "minItems": 1,
-            "items": { "$ref": "#/$defs/dq_requirement" }
+            "items": {
+              "$ref": "#/$defs/dq_requirement"
+            }
           },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
         }
       }
     },
@@ -99,17 +149,36 @@
       "description": "Requirements spanning several CDEs, which cannot be expressed by monitoring one element",
       "items": {
         "type": "object",
-        "required": ["ref", "name", "spans", "dq_requirement"],
+        "required": [
+          "ref",
+          "name",
+          "spans",
+          "dq_requirement"
+        ],
         "additionalProperties": false,
         "properties": {
-          "ref": { "type": "string", "pattern": "^XDQ-[0-9]{2}$" },
-          "name": { "type": "string" },
+          "ref": {
+            "type": "string",
+            "pattern": "^XDQ-[0-9]{2}$"
+          },
+          "name": {
+            "type": "string"
+          },
           "spans": {
             "type": "array",
             "minItems": 2,
-            "items": { "type": "string", "pattern": "^CDE-[0-9]{2}$" }
+            "items": {
+              "type": "string",
+              "pattern": "^CDE-[0-9]{2}$"
+            }
           },
-          "dq_requirement": { "$ref": "#/$defs/dq_requirement" }
+          "dq_requirement": {
+            "$ref": "#/$defs/dq_requirement"
+          },
+          "description": {
+            "type": "string",
+            "description": "Why this requirement spans several CDEs rather than attaching to one"
+          }
         }
       }
     },
@@ -119,20 +188,39 @@
       "description": "What the regulation requires that CDEs and DQ monitoring cannot deliver",
       "items": {
         "type": "object",
-        "required": ["principles", "why_not_addressable", "what_is_needed_instead"],
+        "required": [
+          "principles",
+          "why_not_addressable",
+          "what_is_needed_instead"
+        ],
         "additionalProperties": false,
         "properties": {
           "principles": {
             "type": "array",
-            "items": { "type": "integer", "minimum": 1, "maximum": 14 }
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 14
+            }
           },
-          "topic": { "type": "string" },
-          "why_not_addressable": { "type": "string", "minLength": 30 },
-          "what_is_needed_instead": { "type": "string", "minLength": 20 },
+          "topic": {
+            "type": "string"
+          },
+          "why_not_addressable": {
+            "type": "string",
+            "minLength": 30
+          },
+          "what_is_needed_instead": {
+            "type": "string",
+            "minLength": 20
+          },
           "also_drives_cde": {
             "type": "array",
             "description": "CDE refs this principle also drives, where a principle appears in both lists",
-            "items": { "type": "string", "pattern": "^CDE-[0-9]{2}$" }
+            "items": {
+              "type": "string",
+              "pattern": "^CDE-[0-9]{2}$"
+            }
           }
         }
       }
@@ -142,11 +230,18 @@
     "paragraphs": {
       "type": "array",
       "minItems": 1,
-      "items": { "type": "integer", "minimum": 1, "maximum": 89 }
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 89
+      }
     },
     "citation": {
       "type": "object",
-      "required": ["principle", "paragraphs"],
+      "required": [
+        "principle",
+        "paragraphs"
+      ],
       "additionalProperties": false,
       "properties": {
         "principle": {
@@ -155,21 +250,42 @@
           "maximum": 11,
           "description": "Bank-facing principles only. 12-14 address supervisors."
         },
-        "principle_name": { "type": "string" },
-        "paragraphs": { "$ref": "#/$defs/paragraphs" },
-        "quote": { "type": "string", "minLength": 10, "maxLength": 300 }
+        "principle_name": {
+          "type": "string"
+        },
+        "paragraphs": {
+          "$ref": "#/$defs/paragraphs"
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 450,
+          "description": "One complete verbatim sentence. Do not truncate mid-sentence - a clipped quote is weaker evidence than a slightly longer one."
+        }
       }
     },
     "dq_requirement": {
       "type": "object",
-      "required": ["dimension", "rule_intent", "measurement", "threshold",
-                   "threshold_basis", "citation"],
+      "required": [
+        "dimension",
+        "rule_intent",
+        "measurement",
+        "threshold",
+        "threshold_basis",
+        "citation"
+      ],
       "additionalProperties": false,
       "properties": {
         "dimension": {
           "type": "string",
-          "enum": ["accuracy", "completeness", "validity", "uniqueness",
-                   "consistency", "timeliness"],
+          "enum": [
+            "accuracy",
+            "completeness",
+            "validity",
+            "uniqueness",
+            "consistency",
+            "timeliness"
+          ],
           "description": "Alation native DQ monitor categories"
         },
         "rule_intent": {
@@ -182,13 +298,18 @@
           "minLength": 15,
           "description": "What to count or compare. No table or column names."
         },
-        "threshold": { "type": "string", "minLength": 1 },
+        "threshold": {
+          "type": "string",
+          "minLength": 1
+        },
         "threshold_basis": {
           "type": "string",
           "minLength": 15,
           "description": "Why that threshold. Zero-tolerance for identifier integrity; materiality per para 56 for reconciliation and valuation."
         },
-        "citation": { "$ref": "#/$defs/citation" }
+        "citation": {
+          "$ref": "#/$defs/citation"
+        }
       }
     }
   }

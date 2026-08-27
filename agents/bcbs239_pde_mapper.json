@@ -1,0 +1,43 @@
+{
+  "$comment": "UNVERIFIED against a live instance. tools[] are matched by name at deploy time and mapped to tool_config_ids preserving order; the names below were taken from `./run.sh list tools` on finance-industry.mtse.alationcloud.com. parameter_bindings is omitted rather than empty — the API rejects bindings without tool_config_ids.",
+  "description": "Takes a BCBS 239 requirements register and reports what this Alation instance actually has against it: existing Critical Data Elements, matching physical data elements with confidence and evidence, existing data quality monitoring, and gaps. Records what was searched and found nothing, so a missed match is visible rather than silent. Proposes nothing not bound to a real catalog object, and creates nothing.",
+  "input_json_schema": {
+    "properties": {
+      "message": {
+        "description": "A BCBS 239 requirements register as JSON, produced by bcbs239_cde_dq_interpreter and validated against schemas/cde_dq_requirements.schema.json.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "type": "object"
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "llm_extra_config": null,
+  "mode": "tool_call",
+  "name": "bcbs239_pde_mapper",
+  "output_json_schema": null,
+  "prompt": "PLACEHOLDER — populated at deploy time from prompts/bcbs239_pde_mapper.md via `./run.sh deploy agents/bcbs239_pde_mapper.json --prompt bcbs239_pde_mapper`. Do not edit this field by hand; the .md file is the source of truth.",
+  "published_status": "draft",
+  "skill_names": [],
+  "tags": [
+    "bcbs239",
+    "cde",
+    "pde-mapping",
+    "gap-analysis",
+    "agent-kit"
+  ],
+  "tools": [
+    { "name": "Get Data Sources" },
+    { "name": "List Critical Data Elements" },
+    { "name": "Query CDE Physical Data Elements" },
+    { "name": "Search Catalog" },
+    { "name": "Get Data Schema" },
+    { "name": "Get Data Quality" }
+  ]
+}

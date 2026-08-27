@@ -54,9 +54,17 @@ def structural_checks(doc: dict) -> list[str]:
                 problems.append(f"{ref}: a {r.get('dimension')} check has no citation")
             if not (r.get("threshold_basis") or "").strip():
                 problems.append(f"{ref}: a {r.get('dimension')} check has no threshold_basis")
-            # A measurement naming physical objects means step 3's job leaked in
+            # A measurement naming physical objects means step 3's job leaked in.
+            # Must match real SQL, not the English word "from" — an earlier version
+            # of this check flagged "originating from manual processes" six times.
             m = (r.get("measurement") or "")
-            if re.search(r"\b(?:dbo|schema|table)\.\w+|\bSELECT\b|\bFROM\b", m, re.I):
+            sqlish = (
+                re.search(r"\bSELECT\b[\s\S]{0,80}\bFROM\b", m, re.I)     # SELECT ... FROM
+                or re.search(r"\b(?:dbo|information_schema)\.\w+", m, re.I)
+                or re.search(r"\b\w+\.\w+\.\w+\b", m)                     # db.schema.table
+                or re.search(r"[`\[]\w+[`\]]", m)                          # quoted identifier
+            )
+            if sqlish:
                 problems.append(f"{ref}: measurement looks like SQL or names objects: "
                                 f"{m[:60]!r}")
 

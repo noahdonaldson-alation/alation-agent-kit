@@ -1,0 +1,736 @@
+```json
+{
+  "regulation": {
+    "id": "BCBS239",
+    "title": "Principles for effective risk data aggregation and risk reporting",
+    "published": "2013-01-09",
+    "source_url": "https://www.bis.org/publ/bcbs239.pdf",
+    "scope_note": "Applies to global systemically important banks (G-SIBs) and, by supervisory expectation, to domestically systemically important banks (D-SIBs). Covers all risk data aggregation capabilities and risk reporting practices across the consolidated banking group, including subsidiaries and off-balance-sheet exposures."
+  },
+  "objectives": [
+    {
+      "objective": "Establish board and senior management accountability for risk data quality, requiring governance frameworks, service-level standards, and independent validation of aggregation and reporting processes.",
+      "paragraphs": [27, 28, 29]
+    },
+    {
+      "objective": "Require integrated data architecture with single identifiers, unified naming conventions, and metadata so that risk data can be reliably aggregated across the banking group.",
+      "paragraphs": [33, 35]
+    },
+    {
+      "objective": "Ensure risk data is accurate and reconciled to accounting and source systems, with controls at least as robust as those applied to accounting data, and a single authoritative source per risk type.",
+      "paragraphs": [36, 37, 40]
+    },
+    {
+      "objective": "Ensure completeness of risk data aggregation across all material exposures, business lines, legal entities, asset types, industries, and regions, including off-balance-sheet items.",
+      "paragraphs": [41, 43]
+    },
+    {
+      "objective": "Deliver aggregate risk data in a timely manner calibrated to risk type and volatility, with enhanced speed during stress and crisis periods.",
+      "paragraphs": [44, 45, 46, 47]
+    },
+    {
+      "objective": "Build adaptable aggregation capabilities that can respond to ad hoc queries, stress scenarios, and regulatory requests by slicing data across any combination of dimensions.",
+      "paragraphs": [48, 50]
+    },
+    {
+      "objective": "Ensure risk management reports are accurate, reconciled to underlying data, and subject to validation rules, with materiality-based precision requirements.",
+      "paragraphs": [52, 53, 55, 56]
+    },
+    {
+      "objective": "Ensure reports comprehensively cover all material risk areas and provide forward-looking information including stress test results and concentration data.",
+      "paragraphs": [57, 58, 59, 60]
+    }
+  ],
+  "cde_candidates": [
+    {
+      "ref": "CDE-01",
+      "name": "Counterparty Identifier",
+      "definition": "The single, authoritative identifier that uniquely and persistently represents a counterparty — including corporate borrowers, derivative counterparties, and issuer entities — across all systems within the banking group. Where available, this should map to or be reconcilable with a Legal Entity Identifier (LEI).",
+      "why_critical": "Without a consistent counterparty identifier, exposures recorded in different systems cannot be matched to the same obligor. Aggregated credit exposure to a single large borrower or counterparty — the canonical stress-period figure cited in ¶46(a) and ¶46(b) — cannot be computed because records from trading, lending, and derivative systems cannot be joined. The figure is not merely degraded; it is structurally unavailable.",
+      "risk_types": ["credit", "counterparty", "concentration"],
+      "criticality": 3,
+      "criticality_rationale": "Without Counterparty Identifier, the aggregate credit exposure figure to a single counterparty across legal entities and business lines cannot be computed at all, because there is no key by which exposure records from separate systems can be joined to the same obligor — as required by ¶33 ('single identifiers and/or unified naming conventions for data including legal entities, counterparties') and ¶46(a)–(b).",
+      "driven_by": [
+        {
+          "principle": 2,
+          "principle_name": "Data architecture and IT infrastructure",
+          "paragraphs": [33],
+          "quote": "A bank should establish integrated data taxonomies and architecture across the banking group, which includes information on the characteristics of the data (metadata), as well as use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts."
+        },
+        {
+          "principle": 4,
+          "principle_name": "Completeness",
+          "paragraphs": [41],
+          "quote": "A bank's risk data aggregation capabilities should include all material risk exposures, including those that are off-balance sheet."
+        },
+        {
+          "principle": 5,
+          "principle_name": "Timeliness",
+          "paragraphs": [46],
+          "quote": "Critical risks include but are not limited to: (a) The aggregated credit exposure to a large corporate borrower ... (b) Counterparty credit risk exposures, including, for example, derivatives."
+        }
+      ],
+      "search_terms": ["counterparty ID", "counterparty identifier", "LEI", "legal entity identifier", "obligor ID", "obligor identifier", "client ID", "customer ID", "party ID", "CPTY_ID", "OBLIG_ID", "CLIENT_KEY"],
+      "dq_requirements": [
+        {
+          "dimension": "uniqueness",
+          "rule_intent": "Each counterparty must be represented by exactly one identifier value across all risk systems; duplicate or split identifiers cause double-counting or undercounting of aggregated exposure.",
+          "measurement": "Count of counterparty identifier values that resolve to more than one distinct master-record entry, or count of master-record entries that share the same identifier value with a different counterparty.",
+          "threshold": "0 duplicate or conflicting identifier mappings",
+          "threshold_basis": "A single duplicate causes an aggregated exposure figure to be wrong by the full amount of the mis-attributed exposure. There is no materiality tolerance for identifier integrity because the error magnitude is unknown until the duplicate is resolved. Zero is the only defensible target.",
+          "citation": {
+            "principle": 2,
+            "paragraphs": [33],
+            "quote": "use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts"
+          }
+        },
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every exposure record must carry a populated, resolvable counterparty identifier; a null or unresolvable value means the exposure cannot be attributed to any obligor and is excluded from aggregation.",
+          "measurement": "Count of exposure records where the counterparty identifier field is null, blank, or does not match any entry in the authoritative counterparty master.",
+          "threshold": "0 null or unresolvable counterparty identifiers on any exposure record",
+          "threshold_basis": "An exposure with no resolvable counterparty is invisible to aggregation. Because completeness must include all material exposures (¶41), even a single unattributed material exposure is a compliance defect. Zero is required; partial tolerance would require knowing the excluded exposure is immaterial, which cannot be determined without the identifier itself.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data. Where risk data is not entirely complete, the impact should not be critical to the bank's ability to manage its risks effectively."
+          }
+        },
+        {
+          "dimension": "consistency",
+          "rule_intent": "The counterparty identifier used in risk systems must resolve to the same legal entity as the identifier used in the general ledger and accounting systems, so that reconciliation between risk exposure and accounting balance is possible.",
+          "measurement": "Count of counterparty identifiers appearing in risk exposure data that cannot be matched to a corresponding identifier in the accounting or general ledger system's party master.",
+          "threshold": "0 unmatched counterparty identifiers between risk and accounting systems",
+          "threshold_basis": "¶36(c) requires risk data to be reconciled with accounting data. An unmatched identifier breaks that reconciliation link entirely for the affected counterparty; no materiality tolerance applies to the key itself, only to the resulting balance difference.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [36],
+            "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate."
+          }
+        }
+      ],
+      "confidence": 0.97
+    },
+    {
+      "ref": "CDE-02",
+      "name": "Legal Entity Identifier (Booking Entity)",
+      "definition": "The identifier that designates the specific legal entity within the banking group in which a risk exposure is booked. Used to attribute exposures to subsidiaries, branches, or the parent for group consolidation, subsidiary-level reporting, and cross-jurisdiction aggregation.",
+      "why_critical": "Without the booking entity identifier, exposures cannot be attributed to individual legal entities, making group-level consolidation and subsidiary-level reporting impossible. The figure 'total exposure of subsidiary X' or 'group consolidated credit exposure' cannot be computed because there is no field by which to filter or roll up records to the correct entity.",
+      "risk_types": ["credit", "market", "liquidity", "operational", "concentration"],
+      "criticality": 3,
+      "criticality_rationale": "Without Legal Entity Identifier, the aggregate exposure figure for any individual legal entity within the group cannot be computed at all, because there is no dimension by which to assign records to that entity — directly violating ¶33's requirement for single identifiers for legal entities and ¶4's requirement to aggregate by legal entity.",
+      "driven_by": [
+        {
+          "principle": 2,
+          "principle_name": "Data architecture and IT infrastructure",
+          "paragraphs": [33],
+          "quote": "A bank should establish integrated data taxonomies and architecture across the banking group, which includes information on the characteristics of the data (metadata), as well as use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts."
+        },
+        {
+          "principle": 4,
+          "principle_name": "Completeness",
+          "paragraphs": [41],
+          "quote": "A bank's risk data aggregation capabilities should include all material risk exposures, including those that are off-balance sheet."
+        }
+      ],
+      "search_terms": ["legal entity", "booking entity", "entity ID", "legal entity identifier", "LEI", "book entity", "subsidiary code", "branch code", "LEGAL_ENTITY_CD", "ENTITY_ID", "LE_CODE", "BOOKING_ENTITY"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every exposure record must carry a populated legal entity identifier so it can be attributed to a specific booking entity for group consolidation and subsidiary reporting.",
+          "measurement": "Count of exposure records where the legal entity identifier is null or blank.",
+          "threshold": "0 records with null legal entity identifier",
+          "threshold_basis": "A record without a legal entity identifier is unattributable and falls outside all entity-level aggregations, creating a gap in both subsidiary and group figures. No materiality tolerance applies to the key field itself.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+          }
+        },
+        {
+          "dimension": "validity",
+          "rule_intent": "Legal entity identifier values must correspond to entries in the authoritative group entity register; invalid codes cannot be mapped to a real legal entity in consolidation.",
+          "measurement": "Count of exposure records carrying a legal entity identifier value not present in the current authoritative group legal entity register.",
+          "threshold": "0 records with invalid legal entity identifier",
+          "threshold_basis": "An invalid entity code produces an unattributable exposure. Because completeness and accuracy both require every exposure to be classifiable (¶36, ¶43), there is no acceptable tolerance for unresolvable entity codes.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [40],
+            "quote": "Supervisors expect banks to measure and monitor the accuracy of data and to develop appropriate escalation channels and action plans to be in place to rectify poor data quality."
+          }
+        }
+      ],
+      "confidence": 0.95
+    },
+    {
+      "ref": "CDE-03",
+      "name": "Gross Exposure Amount",
+      "definition": "The monetary value of a risk exposure before the application of credit risk mitigants such as collateral, netting, or guarantees. Expressed in the transaction currency, and also in a reporting currency equivalent where provided. This is the primary quantity that is summed in credit risk aggregation.",
+      "why_critical": "This is the scalar quantity being aggregated. Without a correct gross exposure amount, the sum of exposures to a counterparty, across a business line, or for the group is arithmetically wrong. All risk concentration figures, limit utilisation calculations, and capital adequacy inputs derive from aggregating this field.",
+      "risk_types": ["credit", "counterparty", "concentration", "market"],
+      "criticality": 3,
+      "criticality_rationale": "Without Gross Exposure Amount, the aggregate credit exposure figure to any counterparty, business line, or geography cannot be computed at all, because there is no monetary value to sum — it is the quantity that all aggregation operations are performed on, as required by Principle 4's mandate to capture and aggregate all material risk data.",
+      "driven_by": [
+        {
+          "principle": 4,
+          "principle_name": "Completeness",
+          "paragraphs": [41, 43],
+          "quote": "A bank's risk data aggregation capabilities should include all material risk exposures, including those that are off-balance sheet. Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+        },
+        {
+          "principle": 3,
+          "principle_name": "Accuracy and Integrity",
+          "paragraphs": [36],
+          "quote": "A bank should aggregate risk data in a way that is accurate and reliable. Controls surrounding risk data should be as robust as those applicable to accounting data."
+        }
+      ],
+      "search_terms": ["exposure amount", "gross exposure", "outstanding balance", "notional amount", "drawn amount", "EAD", "exposure at default", "face value", "nominal amount", "GROSS_EXP", "EXPOSURE_AMT", "NOTIONAL", "EAD_AMT"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every exposure record must carry a non-null exposure amount; a null amount means the exposure contributes nothing to aggregates and is effectively excluded from risk figures.",
+          "measurement": "Count of exposure records where the gross exposure amount field is null or blank.",
+          "threshold": "0 null exposure amounts",
+          "threshold_basis": "A null amount is functionally equivalent to zero, silently understating total exposure. Because ¶41 requires all material exposures to be captured, a missing amount on any material record is a completeness failure with no tolerance.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data. Where risk data is not entirely complete, the impact should not be critical to the bank's ability to manage its risks effectively."
+          }
+        },
+        {
+          "dimension": "accuracy",
+          "rule_intent": "The gross exposure amount in risk systems must reconcile to the outstanding balance recorded in the general ledger for the same instrument within a materiality tolerance, confirming the risk figure is drawn from or consistent with the accounting record.",
+          "measurement": "Sum of absolute differences between risk system exposure amounts and general ledger balances for matched instruments, expressed as a percentage of total portfolio balance. Reconciling items to be individually identified and explained.",
+          "threshold": "Materiality threshold set by the bank's own materiality policy, consistent with ¶56; individual reconciling items above the materiality threshold to be explained and escalated.",
+          "threshold_basis": "¶56 explicitly calibrates accuracy requirements to accounting materiality: 'if omission or misstatement could influence the risk decisions of users, this may be considered material.' The bank must define and document what constitutes material misstatement for this purpose; a hard numeric target cannot be universally prescribed.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [36],
+            "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate."
+          }
+        }
+      ],
+      "confidence": 0.96
+    },
+    {
+      "ref": "CDE-04",
+      "name": "Risk Type Classification",
+      "definition": "The categorical label that classifies an exposure or position by the type of risk it represents — at minimum: credit risk, market risk, liquidity risk, and operational risk. Used to partition aggregates by risk type and to route exposures to the appropriate risk measurement methodology.",
+      "why_critical": "Without risk type classification, exposures cannot be assigned to the correct measurement framework, limit structure, or risk report section. An exposure classified to the wrong risk type produces a wrong figure in each affected risk type's aggregate, and the cross-risk concentration view required by ¶57 cannot be assembled.",
+      "risk_types": ["credit", "market", "liquidity", "operational", "concentration"],
+      "criticality": 2,
+      "criticality_rationale": "A wrong or missing risk type classification degrades the risk-type-level aggregate (making it incomplete or inflated), but a total exposure figure across all types can still be produced. The aggregate is produced but cannot be correctly sliced by risk type for reporting, which is what ¶57 requires.",
+      "driven_by": [
+        {
+          "principle": 7,
+          "principle_name": "Accuracy (reporting)",
+          "paragraphs": [52, 53],
+          "quote": "Risk management reports should be accurate and precise to ensure a bank's board and senior management can rely with confidence on the aggregated information to make critical decisions about risk."
+        },
+        {
+          "principle": 8,
+          "principle_name": "Comprehensiveness",
+          "paragraphs": [57],
+          "quote": "Risk management reports should include exposure and position information for all significant risk areas (eg credit risk, market risk, liquidity risk, operational risk) and all significant components of those risk areas."
+        }
+      ],
+      "search_terms": ["risk type", "risk category", "risk class", "risk classification", "RISK_TYPE", "RISK_CAT", "RISK_CLASS", "risk flag", "Basel risk type"],
+      "dq_requirements": [
+        {
+          "dimension": "validity",
+          "rule_intent": "Every exposure record must carry a risk type value drawn from the bank's authoritative risk taxonomy; free-text or unrecognised values cannot be aggregated into the correct risk-type bucket.",
+          "measurement": "Count of exposure records where the risk type field contains a value not present in the approved risk taxonomy reference list.",
+          "threshold": "0 records with invalid or unrecognised risk type codes",
+          "threshold_basis": "An exposure with an invalid risk type code is misrouted or excluded from every risk-type aggregate, producing figures that are simultaneously overstated (in the wrong type) and understated (in the correct type). There is no acceptable tolerance because the distortion affects regulatory capital and limit adherence calculations.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [40],
+            "quote": "Supervisors expect banks to measure and monitor the accuracy of data and to develop appropriate escalation channels and action plans to be in place to rectify poor data quality."
+          }
+        },
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every exposure record must carry a populated risk type classification; a null classification means the exposure is excluded from all risk-type-level aggregates.",
+          "measurement": "Count of exposure records where the risk type field is null or blank.",
+          "threshold": "0 null risk type values on exposure records",
+          "threshold_basis": "A null risk type produces an exposure that appears in no risk-type aggregate, violating the completeness requirement of ¶43 and making ¶57's comprehensive coverage impossible to evidence.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+          }
+        }
+      ],
+      "confidence": 0.92
+    },
+    {
+      "ref": "CDE-05",
+      "name": "Business Line",
+      "definition": "The organisational dimension that identifies the business line or business segment — such as retail banking, corporate banking, trading, or treasury — to which an exposure or position is attributed for management reporting and risk aggregation.",
+      "why_critical": "Principle 4 explicitly names business line as a required aggregation dimension. Without it, the bank cannot produce business-line-level risk reports, cannot identify concentrations within a business line, and cannot demonstrate that aggregation covers the full group by business segment.",
+      "risk_types": ["credit", "market", "liquidity", "operational", "concentration"],
+      "criticality": 2,
+      "criticality_rationale": "A missing or incorrect business line code means aggregated risk data cannot be sliced by business line, which Principle 4 explicitly requires. The total group exposure figure can still be produced, but it cannot be partitioned by this required dimension, degrading supervisory and management reporting without invalidating the group total.",
+      "driven_by": [
+        {
+          "principle": 4,
+          "principle_name": "Completeness",
+          "paragraphs": [41, 43],
+          "quote": "Data should be available by business line, legal entity, asset type, industry, region and other groupings, as relevant for the risk in question, that permit identifying and reporting risk exposures, concentrations and emerging risks."
+        },
+        {
+          "principle": 6,
+          "principle_name": "Adaptability",
+          "paragraphs": [50],
+          "quote": "a bank should be able to aggregate risk data quickly on country credit exposures as of a specified date based on a list of countries, as well as industry credit exposures as of a specified date based on a list of industry types across all business lines and geographic areas."
+        }
+      ],
+      "search_terms": ["business line", "business segment", "LOB", "line of business", "BUS_LINE", "BUS_SEG", "SEGMENT_CD", "division", "business unit", "BU_CODE"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every exposure record must carry a populated business line identifier so it can be included in business-line-level aggregations.",
+          "measurement": "Count of exposure records where the business line field is null or blank.",
+          "threshold": "0 null business line values",
+          "threshold_basis": "An exposure without a business line code is excluded from every business-line aggregate. Because Principle 4 requires aggregation to be available by business line, any gap creates an incomplete picture of that line's risk. Zero is required for the key field.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+          }
+        },
+        {
+          "dimension": "validity",
+          "rule_intent": "Business line codes must be drawn from the bank's authoritative organisational hierarchy; unrecognised values cannot be rolled up correctly in group reports.",
+          "measurement": "Count of exposure records carrying a business line value not present in the current authoritative organisational hierarchy reference data.",
+          "threshold": "0 records with unrecognised business line codes",
+          "threshold_basis": "An unrecognised code cannot be mapped to the correct level of the business hierarchy, making the aggregation result unreliable for that segment. No materiality tolerance is appropriate for a classification key.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [40],
+            "quote": "Supervisors expect banks to measure and monitor the accuracy of data and to develop appropriate escalation channels and action plans to be in place to rectify poor data quality."
+          }
+        }
+      ],
+      "confidence": 0.93
+    },
+    {
+      "ref": "CDE-06",
+      "name": "Geography / Country of Risk",
+      "definition": "The country or jurisdiction to which a risk exposure is attributed for geographic aggregation — typically the country of the counterparty's domicile, country of risk, or country of collateral. Distinct from the booking entity's jurisdiction where those differ.",
+      "why_critical": "Principle 4 requires aggregation by region; Principle 6 explicitly illustrates the requirement with country credit exposures aggregated as of a specified date across all business lines. Without a geography code, country-level concentration analysis and cross-border risk aggregation cannot be performed.",
+      "risk_types": ["credit", "market", "concentration", "sovereign"],
+      "criticality": 2,
+      "criticality_rationale": "A missing or incorrect geography code means the country-level and regional credit exposure aggregate cannot be correctly sliced, which ¶50 explicitly requires. The total exposure can still be computed, but cannot be partitioned geographically, degrading the concentration analysis required without invalidating the overall total.",
+      "driven_by": [
+        {
+          "principle": 4,
+          "principle_name": "Completeness",
+          "paragraphs": [41],
+          "quote": "Data should be available by business line, legal entity, asset type, industry, region and other groupings, as relevant for the risk in question, that permit identifying and reporting risk exposures, concentrations and emerging risks."
+        },
+        {
+          "principle": 6,
+          "principle_name": "Adaptability",
+          "paragraphs": [50],
+          "quote": "a bank should be able to aggregate risk data quickly on country credit exposures as of a specified date based on a list of countries, as well as industry credit exposures as of a specified date based on a list of industry types across all business lines and geographic areas."
+        }
+      ],
+      "search_terms": ["country of risk", "country code", "geography", "region", "jurisdiction", "COUNTRY_CD", "CTRY_RISK", "GEO_CODE", "REGION_CD", "domicile country", "ISO country code"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every credit and market exposure record must carry a populated geography or country code to support geographic aggregation and country concentration reporting.",
+          "measurement": "Count of exposure records where the geography or country code field is null or blank.",
+          "threshold": "0 null geography values on material exposure records",
+          "threshold_basis": "An exposure without a country code cannot be attributed to any geographic aggregate; it is silently excluded from country concentration views. Because ¶43 requires completeness to be monitored and ¶50 requires geographic aggregation capability, no tolerance applies to the key field.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+          }
+        },
+        {
+          "dimension": "validity",
+          "rule_intent": "Country codes must conform to an authoritative standard (such as ISO 3166) to ensure consistent cross-system aggregation and prevent misclassification between countries.",
+          "measurement": "Count of exposure records carrying a geography or country value not present in the approved country reference list.",
+          "threshold": "0 records with invalid or non-standard country codes",
+          "threshold_basis": "Non-standard or invented country codes cannot be reliably mapped in cross-system aggregation, producing gaps or double-counts in geographic concentration reports. No tolerance is appropriate for a classification key.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [40],
+            "quote": "Supervisors expect banks to measure and monitor the accuracy of data and to develop appropriate escalation channels and action plans to be in place to rectify poor data quality."
+          }
+        }
+      ],
+      "confidence": 0.93
+    },
+    {
+      "ref": "CDE-07",
+      "name": "Industry / Sector Classification",
+      "definition": "The classification of the counterparty's or issuer's industry or economic sector, using a recognised standard such as GICS, NACE, or SIC. Used to aggregate credit exposures by industry for concentration analysis and to identify sector-level emerging risks.",
+      "why_critical": "Principle 4 names industry as an explicit aggregation dimension. Principle 8 names single name, country, and industry sector as required components of credit risk reporting. Without it, sector concentration analysis — a core supervisory expectation — cannot be produced.",
+      "risk_types": ["credit", "concentration"],
+      "criticality": 2,
+      "criticality_rationale": "A missing or incorrect industry code means the sector-level credit exposure aggregate cannot be produced or is distorted, degrading Principle 4 and Principle 8 compliant reporting. The total credit exposure figure is unaffected, so the element is a 2: the figure is produced but cannot be sliced by this required dimension.",
+      "driven_by": [
+        {
+          "principle": 4,
+          "principle_name": "Completeness",
+          "paragraphs": [41],
+          "quote": "Data should be available by business line, legal entity, asset type, industry, region and other groupings, as relevant for the risk in question, that permit identifying and reporting risk exposures, concentrations and emerging risks."
+        },
+        {
+          "principle": 8,
+          "principle_name": "Comprehensiveness",
+          "paragraphs": [57],
+          "quote": "Risk management reports should include exposure and position information for all significant risk areas (eg credit risk, market risk, liquidity risk, operational risk) and all significant components of those risk areas (eg single name, country and industry sector for credit risk)."
+        }
+      ],
+      "search_terms": ["industry", "sector", "industry code", "sector code", "GICS", "NACE", "SIC", "INDUSTRY_CD", "SECTOR_CD", "borrower industry", "counterparty sector"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every credit exposure record for a corporate or institutional counterparty must carry an industry or sector classification to support concentration analysis by sector.",
+          "measurement": "Count of corporate and institutional credit exposure records where the industry or sector code is null or blank.",
+          "threshold": "0 null industry codes on corporate and institutional exposure records",
+          "threshold_basis": "An exposure without an industry code cannot be attributed to any sector aggregate. Since ¶57 requires industry sector to be reportable for credit risk, and ¶43 requires completeness to be monitored, no gap is acceptable for material in-scope records.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+          }
+        },
+        {
+          "dimension": "validity",
+          "rule_intent": "Industry codes must conform to the bank's chosen industry classification standard; non-standard values prevent consistent aggregation across systems and over time.",
+          "measurement": "Count of credit exposure records carrying an industry code value not present in the bank's approved industry classification reference list.",
+          "threshold": "0 records with invalid industry codes",
+          "threshold_basis": "Invalid codes break the cross-system join needed to aggregate sector exposures; no tolerance applies to a classification key used for concentration reporting.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [40],
+            "quote": "Supervisors expect banks to measure and monitor the accuracy of data and to develop appropriate escalation channels and action plans to be in place to rectify poor data quality."
+          }
+        }
+      ],
+      "confidence": 0.91
+    },
+    {
+      "ref": "CDE-08",
+      "name": "Position / As-of Date",
+      "definition": "The business date as of which a risk exposure or position is stated. Every aggregated risk figure is a snapshot of exposures as of a specific date; this field is the temporal key that defines which snapshot a record belongs to and enables point-in-time and trend comparisons.",
+      "why_critical": "Without the position date, records from different time periods cannot be separated, making it impossible to compute a correct aggregate for any single reporting date. The aggregate figure for 'credit exposure as of [date]' — the paradigm case in ¶50 — requires every constituent record to carry the date it represents.",
+      "risk_types": ["credit", "market", "liquidity", "operational", "concentration"],
+      "criticality": 3,
+      "criticality_rationale": "Without Position / As-of Date, the aggregate exposure figure as of any specific reporting date cannot be computed at all, because records cannot be filtered to a single valuation snapshot — ¶50 requires aggregation 'as of a specified date', which is only possible if every record carries that date.",
+      "driven_by": [
+        {
+          "principle": 5,
+          "principle_name": "Timeliness",
+          "paragraphs": [44, 45],
+          "quote": "A bank's risk data aggregation capabilities should ensure that it is able to produce aggregate risk information on a timely basis to meet all risk management reporting requirements. Banks need to build their risk systems to be capable of producing aggregated risk data rapidly during times of stress/crisis for all critical risks."
+        },
+        {
+          "principle": 6,
+          "principle_name": "Adaptability",
+          "paragraphs": [50],
+          "quote": "a bank should be able to aggregate risk data quickly on country credit exposures as of a specified date based on a list of countries, as well as industry credit exposures as of a specified date based on a list of industry types across all business lines and geographic areas."
+        }
+      ],
+      "search_terms": ["as-of date", "position date", "value date", "report date", "snapshot date", "AS_OF_DT", "POSITION_DT", "REPORT_DT", "VALUATION_DT", "SNAPSHOT_DT", "BUSINESS_DT", "reference date"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every exposure and position record must carry a populated as-of date; records without a date cannot be assigned to any reporting snapshot.",
+          "measurement": "Count of exposure or position records where the as-of date field is null or blank.",
+          "threshold": "0 null as-of dates",
+          "threshold_basis": "A record without an as-of date is temporally unlocatable and will either be excluded from all date-keyed aggregates or included in all of them incorrectly. Either outcome makes the time-point aggregate wrong. There is no materiality tolerance for a temporal key.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+          }
+        },
+        {
+          "dimension": "timeliness",
+          "rule_intent": "Exposure records for each risk type must be available in the aggregation layer within the latency window appropriate to that risk type — intraday for trading and liquidity positions in stress, T+1 for credit in normal conditions — so that aggregates are current when consumed by risk reports.",
+          "measurement": "For each risk type, count of exposure records whose as-of date lags the expected production cut-off by more than the permitted latency threshold for that risk type in both normal and stress scenarios.",
+          "threshold": "Per-risk-type timeliness windows set by the bank's own frequency requirements as required by ¶47; stress-period windows must be materially shorter than normal-period windows for credit, market, and liquidity risk per ¶45–46.",
+          "threshold_basis": "¶45 recognises that different risk types require different speeds and that stress/crisis situations require faster production. The bank must define and document the specific latency windows for each risk type in both scenarios; a single universal threshold would not reflect these differences.",
+          "citation": {
+            "principle": 5,
+            "paragraphs": [44, 45, 46],
+            "quote": "Banks need to build their risk systems to be capable of producing aggregated risk data rapidly during times of stress/crisis for all critical risks."
+          }
+        }
+      ],
+      "confidence": 0.95
+    },
+    {
+      "ref": "CDE-09",
+      "name": "General Ledger Reconciliation Key",
+      "definition": "The identifier — such as a GL account code, journal entry reference, or instrument key — that links a risk exposure record to the corresponding entry in the general ledger or accounting system of record. Enables the reconciliation mandated by ¶36(c) between risk data and accounting data.",
+      "why_critical": "¶36(c) requires risk data to be reconciled with accounting data. Without a reconciliation key, there is no mechanism to match a risk record to its accounting counterpart. The accuracy of the risk figure cannot be evidenced; per ¶36(c) and ¶53(a), an unverifiable figure is not a compliant one regardless of whether it appears numerically correct.",
+      "risk_types": ["credit", "market", "liquidity", "concentration"],
+      "criticality": 3,
+      "criticality_rationale": "Without the General Ledger Reconciliation Key, the reconciliation of risk exposure data to accounting data required by ¶36(c) cannot be performed at all, because there is no field by which a risk record can be matched to a general ledger entry — making the accuracy of the risk figure unverifiable, which under ¶36(c) is an equivalent compliance failure to an inaccurate figure.",
+      "driven_by": [
+        {
+          "principle": 3,
+          "principle_name": "Accuracy and Integrity",
+          "paragraphs": [36],
+          "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate. A bank should strive towards a single authoritative source for risk data per each type of risk."
+        },
+        {
+          "principle": 7,
+          "principle_name": "Accuracy (reporting)",
+          "paragraphs": [53],
+          "quote": "To ensure the accuracy of the reports, a bank should maintain, at a minimum, the following: (a) Defined requirements and processes to reconcile reports to risk data."
+        }
+      ],
+      "search_terms": ["GL account", "GL account code", "general ledger reference", "journal reference", "accounting key", "GL_ACCT_CD", "GL_REF", "ACCT_CODE", "LEDGER_KEY", "SOURCE_REF", "instrument reference", "FI_KEY"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every risk exposure record that corresponds to an on-balance-sheet item must carry a populated general ledger reconciliation key; records without one cannot participate in the risk-to-finance reconciliation.",
+          "measurement": "Count of on-balance-sheet exposure records where the general ledger reconciliation key is null or blank.",
+          "threshold": "0 null GL reconciliation keys on on-balance-sheet exposure records",
+          "threshold_basis": "A missing reconciliation key makes that record's exposure amount unverifiable against the accounting record. Because ¶36(c) requires reconciliation as a control over accuracy, any gap in the key population is a control gap, not merely a data quality gap.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [36],
+            "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate."
+          }
+        },
+        {
+          "dimension": "consistency",
+          "rule_intent": "The GL reconciliation key in a risk record must resolve to an active, current entry in the general ledger; stale or retired keys indicate the risk record has not been updated to match accounting system changes.",
+          "measurement": "Count of risk exposure records carrying a GL reconciliation key that does not match any active entry in the current general ledger chart of accounts.",
+          "threshold": "0 risk records with unresolvable GL reconciliation keys",
+          "threshold_basis": "An unresolvable key means the reconciliation chain is broken for that record. Because ¶53(a) requires reconciliation processes to be maintained and ¶36(c) requires reconciliation to accounting sources, a broken key is an immediate reconciliation control failure.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [36],
+            "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate."
+          }
+        }
+      ],
+      "confidence": 0.94
+    },
+    {
+      "ref": "CDE-10",
+      "name": "Source System Identifier and Manual Override Flag",
+      "definition": "Two related provenance attributes recorded on each risk data record: (1) the identifier of the upstream system from which the data originates, enabling lineage tracing and single-authoritative-source governance; and (2) a flag or indicator that marks whether the record was produced by an automated process or entered or modified manually, including through end-user computing tools such as spreadsheets.",
+      "why_critical": "¶36(b) requires effective controls over manual processes and end-user computing. ¶36(d) requires a single authoritative source per risk type. ¶39 requires documentation of all manual workarounds. Without provenance metadata, it is impossible to identify which records are manually sourced, assess their reliability, apply appropriate controls, or demonstrate authoritative source governance to supervisors.",
+      "risk_types": ["credit", "market", "liquidity", "operational", "concentration"],
+      "criticality": 2,
+      "criticality_rationale": "Missing or incorrect source system or manual flag metadata means the bank cannot identify which records are subject to manual override controls or verify that a single authoritative source is being used per risk type. This degrades the accuracy and control evidence for the aggregate without making the aggregate itself uncomputable — the figure is produced but cannot be trusted in part.",
+      "driven_by": [
+        {
+          "principle": 3,
+          "principle_name": "Accuracy and Integrity",
+          "paragraphs": [36, 39],
+          "quote": "Where a bank relies on manual processes and desktop applications (eg spreadsheets, databases) ... it should have effective mitigants in place ... Supervisors expect banks to document and explain all of their risk data aggregation processes whether automated or manual."
+        }
+      ],
+      "search_terms": ["source system", "source system ID", "data source", "system of origin", "manual override", "manual flag", "EUC flag", "end user computing", "SOURCE_SYS_ID", "SOURCE_SYS_CD", "MANUAL_IND", "EUC_FLAG", "DATA_ORIGIN", "INPUT_TYPE"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every risk data record must carry a populated source system identifier so that data lineage can be traced and single-authoritative-source governance can be enforced per risk type.",
+          "measurement": "Count of risk data records where the source system identifier is null or blank.",
+          "threshold": "0 null source system identifiers",
+          "threshold_basis": "A record without a source system identifier cannot be attributed to an authoritative source, making ¶36(d)'s single-authoritative-source requirement unverifiable for that record. Zero is required for the governance control to be operable.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [36],
+            "quote": "A bank should strive towards a single authoritative source for risk data per each type of risk."
+          }
+        },
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every risk data record must carry a populated manual override flag so that manually sourced records can be identified and subjected to the compensating controls required by ¶36(b).",
+          "measurement": "Count of risk data records where the manual override or EUC flag field is null or blank.",
+          "threshold": "0 null manual override flags",
+          "threshold_basis": "A null flag means the record's provenance type is unknown; it may be manually entered without triggering the required EUC controls. Because ¶36(b) and ¶39 require effective controls over all manual inputs, the flag population must be complete for the control to apply to the right records.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [36, 39],
+            "quote": "Where a bank relies on manual processes and desktop applications ... it should have effective mitigants in place ... Supervisors expect banks to document and explain all of their risk data aggregation processes whether automated or manual."
+          }
+        },
+        {
+          "dimension": "accuracy",
+          "rule_intent": "Manually flagged records must be accompanied by documented justification and should be subject to additional validation; an unflagged record that is known to have originated from a manual source represents a misclassification that undermines the control framework.",
+          "measurement": "Count of records identified by audit trail or system metadata as having been manually entered or modified but not carrying the manual override flag.",
+          "threshold": "0 manual records without the manual override flag",
+          "threshold_basis": "An undetected manual record bypasses the compensating controls required by ¶36(b). Because the purpose of the flag is to trigger controls, a false negative on the flag is a control failure, not merely a data quality issue. Zero tolerance is necessary for the control to be effective.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [39],
+            "quote": "Supervisors expect banks to document and explain all of their risk data aggregation processes whether automated or manual (judgement based or otherwise). Documentation should include an explanation of the appropriateness of any manual workarounds."
+          }
+        }
+      ],
+      "confidence": 0.90
+    },
+    {
+      "ref": "CDE-11",
+      "name": "Collateral Value and Type",
+      "definition": "The monetary value of collateral held against a credit exposure, together with the classification of the collateral type (e.g., cash, financial instrument, real estate, guarantee). Used to compute net exposure after credit risk mitigation and to assess concentration in collateral types.",
+      "why_critical": "Net credit exposure — the figure used in capital adequacy calculations — is gross exposure minus recognised collateral. Without a collateral value, net exposure cannot be correctly computed. Without collateral type, eligibility rules under the credit risk framework cannot be applied and collateral concentration cannot be assessed.",
+      "risk_types": ["credit", "counterparty", "concentration"],
+      "criticality": 2,
+      "criticality_rationale": "A missing or incorrect collateral value overstates net credit exposure (or understates it for ineligible collateral), degrading the accuracy of net exposure aggregates and capital figures. The gross exposure figure can still be computed, but the net figure — which drives capital and limit calculations — is distorted. This is a 2: the figure is produced but cannot be trusted in part.",
+      "driven_by": [
+        {
+          "principle": 4,
+          "principle_name": "Completeness",
+          "paragraphs": [41],
+          "quote": "A bank's risk data aggregation capabilities should include all material risk exposures, including those that are off-balance sheet."
+        },
+        {
+          "principle": 3,
+          "principle_name": "Accuracy and Integrity",
+          "paragraphs": [36],
+          "quote": "Controls surrounding risk data should be as robust as those applicable to accounting data."
+        }
+      ],
+      "search_terms": ["collateral value", "collateral amount", "collateral type", "security value", "COLL_VAL", "COLL_AMT", "COLL_TYPE", "COLLATERAL_CD", "security type", "pledge value", "haircut", "LGD collateral"],
+      "dq_requirements": [
+        {
+          "dimension": "completeness",
+          "rule_intent": "Every collateralised exposure record must carry a populated collateral value; a null value means the collateral is ignored in net exposure calculations, overstating risk.",
+          "measurement": "Count of exposure records identified as collateralised where the collateral value field is null or blank.",
+          "threshold": "0 null collateral values on collateralised exposure records",
+          "threshold_basis": "A null collateral value on a collateralised record causes the net exposure to be overstated by the full collateral amount. While ¶56 permits materiality-based accuracy thresholds for balances, a systematically null key field on collateralised records is a structural gap, not a valuation approximation.",
+          "citation": {
+            "principle": 4,
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+          }
+        },
+        {
+          "dimension": "accuracy",
+          "rule_intent": "Collateral values must be current and consistent with the valuation date of the associated exposure; stale valuations overstate or understate credit protection.",
+          "measurement": "Count of collateralised exposure records where the collateral valuation date is more than the bank's defined maximum staleness period older than the position as-of date for that record.",
+          "threshold": "Materiality threshold and maximum staleness period set by the bank's credit risk policy; material collateral items to be revalued within the period specified by that policy.",
+          "threshold_basis": "¶56 calibrates accuracy requirements to materiality. For collateral this means the staleness threshold should be set by the bank's credit risk management policy based on collateral type and volatility, not a universal number. The threshold must be documented and justifiable.",
+          "citation": {
+            "principle": 3,
+            "paragraphs": [36],
+            "quote": "Controls surrounding risk data should be as robust as those applicable to accounting data."
+          }
+        }
+      ],
+      "confidence": 0.88
+    }
+  ],
+  "cross_cutting_dq": [
+    {
+      "ref": "XDQ-01",
+      "name": "Risk-to-finance reconciliation",
+      "spans": ["CDE-03", "CDE-09"],
+      "dq_requirement": {
+        "dimension": "consistency",
+        "rule_intent": "The total of gross exposure amounts aggregated from risk systems must reconcile to the corresponding account balances in the general ledger, with all differences individually identified, classified as reconciling items, and either explained by legitimate timing or treatment differences or escalated for correction.",
+        "measurement": "For each risk type and reporting date: (1) sum of gross exposure amounts from risk data aggregation; (2) sum of corresponding balances from the general ledger for matched instruments via the GL reconciliation key (CDE-09); (3) difference expressed in absolute terms and as a percentage of the GL total; (4) count and aggregate value of unmatched items (risk records with no GL match, and GL entries with no risk record).",
+        "threshold": "Unexplained differences above the bank's materiality threshold (defined per ¶56) to be individually investigated and resolved; all reconciling items above threshold to be documented with a classification (timing difference, treatment difference, data error) and an owner and resolution date.",
+        "threshold_basis": "¶36(c) requires reconciliation to accounting sources as a control over accuracy. ¶56 calibrates accuracy requirements to materiality — 'if omission or misstatement could influence the risk decisions of users, this may be considered material.' The materiality threshold for this reconciliation must be defined by the bank's finance and risk leadership and documented as policy; a hard universal numeric target would be inconsistent with the regulation's materiality framing. Zero tolerance applies to the count of unmatched items that lack any explanation, since an unexplained difference is not a reconciled one.",
+        "citation": {
+          "principle": 3,
+          "paragraphs": [36, 53],
+          "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate. A bank should maintain, at a minimum: (a) Defined requirements and processes to reconcile reports to risk data."
+        }
+      }
+    },
+    {
+      "ref": "XDQ-02",
+      "name": "Counterparty identity resolution across systems",
+      "spans": ["CDE-01", "CDE-02", "CDE-03"],
+      "dq_requirement": {
+        "dimension": "consistency",
+        "rule_intent": "A single real-world counterparty must be represented by the same authoritative identifier across all risk source systems — credit, trading, derivatives, and treasury — so that exposures from all systems can be joined and summed without double-counting or omission. Where a system uses a local identifier, a verified mapping to the authoritative counterparty identifier must exist and be current.",
+        "measurement": "(1) Count of distinct real-world counterparties (identified by LEI or authoritative master record) that appear under more than one local identifier across source systems without a confirmed cross-system mapping; (2) count of local counterparty identifiers in any source system that have no mapping to the authoritative counterparty master; (3) for counterparties that appear in multiple systems, sum of exposure amounts computed using joined records versus sum computed by naively aggregating per-system figures, with the difference quantifying the impact of identity fragmentation.",
+        "threshold": "0 unmapped local counterparty identifiers for counterparties with material exposures; 0 confirmed duplicate identities for the same real-world counterparty in the authoritative master. For counterparties below a materiality threshold, unresolved mappings to be tracked and aged.",
+        "threshold_basis": "¶33 requires single identifiers or unified naming conventions for counterparties across the banking group. A single unresolved mapping for a material counterparty means the aggregate exposure to that counterparty is incorrect by an unknown amount — the error cannot be bounded until the mapping is resolved. Zero is therefore the only defensible threshold for material counterparties. The materiality boundary for 'material exposure' is set by the bank's concentration risk policy.",
+        "citation": {
+          "principle": 2,
+          "paragraphs": [33],
+          "quote": "A bank should establish integrated data taxonomies and architecture across the banking group, which includes information on the characteristics of the data (metadata), as well as use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts."
+        }
+      }
+    },
+    {
+      "ref": "XDQ-03",
+      "name": "Aggregation completeness coverage check",
+      "spans": ["CDE-01", "CDE-02", "CDE-05", "CDE-06", "CDE-07", "CDE-08"],
+      "dq_requirement": {
+        "dimension": "completeness",
+        "rule_intent": "The population of exposure records entering each aggregation run must be measurably complete: every source system that is expected to contribute records for the reporting date must have done so, and the total count and aggregate value of records received must be reconciled against the expected population. Missing feeds or partially loaded source systems must be detected before aggregates are published.",
+        "measurement": "(1) For each source system, compare the count of records received for the current as-of date against the count received for the prior equivalent period (same day-of-week, or prior month-end), flagging deviations beyond a statistical tolerance; (2) compare the aggregate gross exposure loaded from each source against the prior-period equivalent and against any available control totals from the source system; (3) count of expected source systems that delivered zero records for the reporting date.",
+        "threshold": "Zero source systems with zero records where a non-zero contribution is expected; statistical tolerance on count and value deviations to be set by the bank based on normal volatility for each source — deviations beyond tolerance to block publication of aggregates until investigated.",
+        "threshold_basis": "¶43 requires completeness to be measured and monitored, and ¶43 further requires that where data is not entirely complete the impact must not be critical. A missing source feed is by definition an unknown gap whose materiality cannot be assessed until it is resolved; blocking publication is therefore the only control consistent with the regulation's intent. The statistical tolerance for non-zero deviations is set by the bank based on observed volatility, not by the regulation.",
+        "citation": {
+          "principle": 4,
+          "paragraphs": [43],
+          "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data. Where risk data is not entirely complete, the impact should not be critical to the bank's ability to manage its risks effectively."
+        }
+      }
+    }
+  ],
+  "out_of_scope": [
+    {
+      "principles": [1],
+      "topic": "Board and senior management governance of risk data, including approval of the aggregation framework, resourcing decisions, and independent validation programmes",
+      "why_not_addressable": "Principle 1 concerns organisational accountability, board oversight, and governance frameworks (¶27–31). A data catalog can document data ownership assignments and stewardship roles, but it cannot enforce whether the board reviews and approves the framework, whether independent validation is conducted by qualified staff, or whether senior management understands aggregation limitations. These are institutional governance outcomes, not data management controls.",
+      "what_is_needed_instead": "Board-level approval records, governance committee minutes, independent validation reports, and documented escalation channels maintained in the bank's governance management or GRC platform. The catalog can cross-reference ownership and stewardship metadata but is not the system of record for governance accountability.",
+      "also_drives_cde": []
+    },
+    {
+      "principles": [2],
+      "topic": "IT infrastructure resilience, business continuity planning, and the architectural decision to implement integrated versus federated data systems",
+      "why_not_addressable": "Principle 2 (¶32–34) requires that risk data aggregation capabilities be resilient in stress conditions and that roles, responsibilities, and data lifecycle controls exist across business and IT functions. A data catalog can document data architecture, metadata, and ownership, but it cannot implement or test business continuity capabilities, enforce data lifecycle controls in source systems, or guarantee availability during stress events.",
+      "what_is_needed_instead": "Business continuity plans, IT architecture governance records, DR test results, and data lifecycle control frameworks maintained in IT service management and enterprise architecture tooling. The catalog's data lineage and ownership metadata supports Principle 2 but does not replace these controls.",
+      "also_drives_cde": ["CDE-01", "CDE-02", "CDE-09", "CDE-10"]
+    },
+    {
+      "principles": [7],
+      "topic": "Report-level reconciliation processes, validation rule inventories, and exception reporting procedures",
+      "why_not_addressable": "Principle 7 (¶52–56) requires defined reconciliation processes between reports and risk data, an inventory of validation rules applied to quantitative information, and procedures for identifying and reporting data errors. A data catalog can document that these processes and rules exist and link them to CDEs, but it cannot execute the reconciliation, maintain the validation rule inventory as an operational system, or manage exception workflows. The catalog records metadata about these processes; it does not perform them.",
+      "what_is_needed_instead": "A reconciliation and validation management platform (or equivalent functionality within the risk aggregation system), an operational inventory of validation rules with their current status, and an exception management workflow system. Results should be surfaced as data quality observations linkable from the catalog.",
+      "also_drives_cde": ["CDE-03", "CDE-09"]
+    },
+    {
+      "principles": [8],
+      "topic": "Comprehensiveness of report content: coverage of all material risk areas, forward-looking assessment, stress test results, and capital adequacy information in reports delivered to the board",
+      "why_not_addressable": "Principle 8 (¶57–60) specifies what must appear in risk reports — coverage of credit, market, liquidity, and operational risk; inter- and intra-risk concentrations; stress testing results; forward-looking forecasts. Whether a report contains the right content for the right audience is a reporting governance and report production question, not a data cataloging question. The catalog cannot verify that a delivered report covers all material risk areas or contains the required forward-looking narrative.",
+      "what_is_needed_instead": "Report template governance, report content review by the board and risk committees, and periodic report adequacy assessments. These are managed through risk governance frameworks and board reporting processes, not through a data catalog.",
+      "also_drives_cde": ["CDE-04", "CDE-05", "CDE-06", "CDE-07"]
+    },
+    {
+      "principles": [9],
+      "topic": "Clarity, usefulness, and appropriateness of risk report presentation for different recipient groups",
+      "why_not_addressable": "Principle 9 (¶61–69) addresses how information is presented — the balance of quantitative and qualitative content, tailoring to board versus management audiences, and periodic confirmation with recipients that reports meet their needs. These are communication design and governance matters. A data catalog documents what data elements exist and their quality; it does not govern how those elements are presented in reports or whether recipients find the reports useful.",
+      "what_is_needed_instead": "Report design standards, recipient feedback processes, and board-level report review procedures. The catalog's business glossary (¶37, ¶67 reference a 'dictionary of concepts') can contribute to clarity by providing agreed definitions, but the presentation and sufficiency of reports is a reporting governance matter.",
+      "also_drives_cde": []
+    },
+    {
+      "principles": [10],
+      "topic": "Frequency requirements for risk report production and distribution, including stress-period escalation of frequency",
+      "why_not_addressable": "Principle 10 (¶70–71) requires the board and senior management to set report frequency requirements for normal and stress conditions, and requires the bank to routinely test its ability to produce reports within those timeframes. The frequency policy is a governance decision; the testing of production capability is an operational and IT matter. A data catalog can document timeliness SLAs as metadata on CDEs (as done for CDE-08), but it cannot enforce production schedules or test report production throughput under stress.",
+      "what_is_needed_instead": "Formally documented report frequency policies approved by the board, operational SLA monitoring in the risk reporting platform, and stress-period reporting drill results. Timeliness SLA metadata in the catalog supports this but is not a substitute for operational enforcement.",
+      "also_drives_cde": ["CDE-08"]
+    },
+    {
+      "principles": [11],
+      "topic": "Distribution of risk reports to appropriate recipients with appropriate confidentiality controls",
+      "why_not_addressable": "Principle 11 (¶72–73) requires procedures for rapid collection and dissemination of reports to all appropriate recipients, balanced with confidentiality requirements. Report distribution is managed through report delivery platforms, access control systems, and distribution list governance — not through a data catalog. The catalog can document data classification and sensitivity as metadata attributes (supporting the confidentiality requirement of ¶27), but cannot control who receives a report or confirm that recipients are the right ones.",
+      "what_is_needed_instead": "Report distribution management systems with access controls, periodic confirmation processes with recipients (¶73), and data classification governance embedded in report delivery workflows. The catalog's sensitivity classification metadata for CDEs contributes to confidentiality governance but does not replace distribution controls.",
+      "also_drives_cde": []
+    }
+  ]
+}
+```

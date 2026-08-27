@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CDE requirements -> physical data elements (pipeline step 3 output)",
+  "description": "Gap analysis of a BCBS 239 requirements register against a real Alation instance. Records what was searched, what was found, what already exists, and — critically — what was NOT found, because a missed match is otherwise invisible in the output.",
+  "type": "object",
+  "required": ["source_register", "instance", "mappings", "coverage_summary"],
+  "additionalProperties": false,
+  "properties": {
+    "source_register": {
+      "type": "object",
+      "required": ["regulation_id", "cde_count"],
+      "additionalProperties": false,
+      "properties": {
+        "regulation_id": { "type": "string" },
+        "cde_count": { "type": "integer", "minimum": 1 },
+        "note": { "type": "string" }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "description": "What was actually searched. Scope matters: a clean 'not found' in a catalog with no relevant data source means something different from one in a fully crawled warehouse.",
+      "additionalProperties": false,
+      "properties": {
+        "data_sources_seen": { "type": "array", "items": { "type": "string" } },
+        "existing_cde_count": {
+          "type": "integer",
+          "description": "From List Critical Data Elements, before anything is proposed"
+        },
+        "scope_caveat": { "type": "string" }
+      }
+    },
+    "mappings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["cde_ref", "cde_name", "status", "searched_for", "candidates"],
+        "additionalProperties": false,
+        "properties": {
+          "cde_ref": { "type": "string", "pattern": "^CDE-[0-9]{2}$" },
+          "cde_name": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["mapped", "partial", "not_found", "already_exists"],
+            "description": "mapped = a confident physical element found; partial = plausible but unconfirmed; not_found = searched and nothing matched; already_exists = a CDE for this already exists in the instance"
+          },
+          "existing_cde": {
+            "type": "object",
+            "description": "Set when a CDE covering this requirement already exists",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "linked_pde_count": { "type": "integer" },
+              "assessment": {
+                "type": "string",
+                "description": "Whether the existing CDE adequately covers the requirement, and what differs"
+              }
+            }
+          },
+          "searched_for": {
+            "type": "array",
+            "minItems": 1,
+            "description": "The search terms actually used. Required even when nothing was found — this is the record that a search happened.",
+            "items": { "type": "string" }
+          },
+          "candidates": {
+            "type": "array",
+            "description": "Physical elements found. Empty array is a valid and important answer.",
+            "items": {
+              "type": "object",
+              "required": ["fully_qualified_name", "object_type", "why_matched", "confidence"],
+              "additionalProperties": false,
+              "properties": {
+                "fully_qualified_name": {
+                  "type": "string",
+                  "description": "db.schema.table.column as reported by the catalog. Never invented."
+                },
+                "object_id": { "type": "string" },
+                "object_type": {
+                  "type": "string",
+                  "enum": ["column", "table", "schema", "attribute", "other"]
+                },
+                "data_type": { "type": "string" },
+                "why_matched": {
+                  "type": "string",
+                  "minLength": 15,
+                  "description": "What in the catalog metadata supports this being the element — name, description, lineage, or usage"
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": ["high", "medium", "low"]
+                },
+                "concerns": { "type": "string" }
+              }
+            }
+          },
+          "proposed_dq_monitors": {
+            "type": "array",
+            "description": "Only for candidates actually found. A monitor on an element that does not exist is not a proposal, it is a guess.",
+            "items": {
+              "type": "object",
+              "required": ["dimension", "target", "rule_intent", "threshold", "authority"],
+              "additionalProperties": false,
+              "properties": {
+                "dimension": {
+                  "type": "string",
+                  "enum": ["accuracy", "completeness", "validity", "uniqueness",
+                           "consistency", "timeliness"]
+                },
+                "target": {
+                  "type": "string",
+                  "description": "The fully qualified element the monitor runs against"
+                },
+                "rule_intent": { "type": "string", "minLength": 15 },
+                "threshold": { "type": "string" },
+                "authority": {
+                  "type": "string",
+                  "description": "The BCBS 239 paragraph carried through from the register, e.g. '¶43'"
+                },
+                "existing_monitor": {
+                  "type": "string",
+                  "description": "Set if monitoring already covers this, from Get Data Quality / Get DQ Scores"
+                }
+              }
+            }
+          },
+          "blockers": {
+            "type": "array",
+            "description": "Why this could not be mapped — no such data, not crawled, ambiguous naming, insufficient metadata",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "coverage_summary": {
+      "type": "object",
+      "required": ["mapped", "partial", "not_found", "already_exists", "honest_assessment"],
+      "additionalProperties": false,
+      "properties": {
+        "mapped": { "type": "integer", "minimum": 0 },
+        "partial": { "type": "integer", "minimum": 0 },
+        "not_found": { "type": "integer", "minimum": 0 },
+        "already_exists": { "type": "integer", "minimum": 0 },
+        "honest_assessment": {
+          "type": "string",
+          "minLength": 40,
+          "description": "What this instance can and cannot evidence against the register, stated plainly. If coverage is thin, say so — a thin result is a finding, not a failure."
+        },
+        "recommended_next_actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

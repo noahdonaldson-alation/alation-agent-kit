@@ -1,0 +1,71 @@
+name: bcbs239_pde_mapper
+purpose: >
+  Step 3 of the pipeline. Takes the BCBS 239 requirements register from
+  bcbs239_cde_dq_interpreter and reports what this Alation instance actually
+  has against it: existing CDEs, matching physical data elements, existing
+  monitoring, and gaps. Proposes nothing that isn't bound to a real object.
+
+target_agent: bcbs239_pde_mapper
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+
+deploy_variables: {}
+
+output:
+  format: json
+  schema: schemas/pde_mapping.schema.json
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  produced_by: bcbs239_cde_dq_interpreter (step 2) — a validated requirements register
+  note: >
+    Passed as a message, not a tool result. Tool results have a documented cap
+    (the SQL tool truncates near 10k chars) and the register is 30-50KB, so the
+    agent-as-tool route risks silent truncation. Orchestrate via the kit, or via
+    a Flow where step output becomes step input.
+
+agent_config:
+  mode: tool_call
+  tools:
+    # Deliberately narrow. More tools means more ways to wander and more quota
+    # burned; these five cover scope, search, confirmation and existing state.
+    - Get Data Sources                  # scope: what is even in this instance
+    - List Critical Data Elements       # baseline: what CDEs already exist
+    - Query CDE Physical Data Elements  # what is already linked to those CDEs
+    - Search Catalog                    # find candidate tables and columns
+    - Get Data Schema                   # confirm type and description before claiming a match
+    - Get Data Quality                  # is monitoring already in place
+  cost_note: >
+    These are Alation base tools, so they meter at 0.25 ACU per action — unlike
+    custom tools, which are exempt. This is the first agent in the pipeline with
+    a real running cost. The prompt tells it to search once per CDE rather than
+    once per search term; at ~11 CDEs plus scope and confirmation calls, expect
+    roughly 20-25 actions or 5-6 ACU per run. Per-term searching would be 4-5x
+    that for no benefit.
+
+design_notes: >
+  The load-bearing instruction is the "failure mode you must avoid" section. A
+  missed match is invisible in the output — it reads as a small gap rather than a
+  search failure — so the prompt requires searched_for to be populated even when
+  nothing was found, treats "candidates: [] / not_found" as a correct answer, and
+  forbids naming any object that did not come back from a tool call.
+  The gap analysis framing came from discovering that List Critical Data Elements
+  and Query CDE Physical Data Elements already exist as tools. Reporting against
+  an existing baseline is more useful than proposing into a vacuum, and it stops
+  the agent proposing duplicates of CDEs the customer already has.
+
+changelog:
+  - version: 0.1.0
+    date: 2026-08-24
+    note: >
+      Initial version, written against the verified v0.6.0 register shape rather
+      than a guess at it. Untested against a live instance.
+      Watch for, in order: (1) invented fully-qualified names — the single worst
+      failure, check a sample against the catalog by hand; (2) everything coming
+      back "high" confidence, which would mean the confidence definition is not
+      biting; (3) empty searched_for on not_found entries, which would defeat the
+      whole audit trail; (4) action count per run, for cost.
