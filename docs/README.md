@@ -51,6 +51,5 @@ So each one records:
 - **run-to-run variance**, because a single run cannot distinguish a prompt
   weakness from sampling noise
 
-Cross-cutting planning documents that span both this kit and the masterclass
-engine live outside this repo, in the workspace `docs/` folder — they aren't
-specific to the agent kit and would be a confusing home here.
+Cross-cutting planning notes live outside this repo, in the workspace `docs/`
+folder. Anything specific to a prompt or an agent in this kit belongs here.

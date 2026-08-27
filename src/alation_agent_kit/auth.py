@@ -22,7 +22,7 @@ _REFRESH_MARGIN_SEC = 300  # re-mint when under 5 minutes remain
 
 def load_dotenv(path: str | Path = ".env") -> None:
     """Minimal .env loader. Unlike os.environ.setdefault, the file WINS over
-    pre-existing shell vars — that surprise cost the masterclass script a day."""
+    pre-existing shell vars, which is the opposite of the usual setdefault trap."""
     p = Path(path)
     if not p.exists():
         return

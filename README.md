@@ -111,10 +111,17 @@ same length. Sorting them independently silently rewires an agent's bindings —
 so the canonicalizer reorders them **as pairs**, and flags a length mismatch
 rather than guessing.
 
-Also worth knowing: **no PDF ingestion exists.** No file upload, no RAG, no
-knowledge base. That's why `scripts/extract_bcbs239.py` runs locally and the text
-arrives as the agent's `message` parameter. Chunk by principle — the whole
-document risks a `413 payload exceeds the model's context window`.
+Also worth knowing about document input: **there is no file upload and no RAG**,
+but PDF *content* is reachable — via **Unstructured Data Collections** plus the
+`get_asset_content` tool (PDF lands in S3/SharePoint/Confluence → unstructured
+OCF connector → collection → agent reads processed markdown). That path is
+feature-flagged and needs an FDE to enable, and it re-fetches on every call with
+no cache, costing 30–60s per PDF through Textract.
+
+So `scripts/extract_bcbs239.py` extracts locally and the text arrives as the
+agent's `message` parameter: fast, free, and deterministic for the iteration
+loop. Unstructured Collections are the right choice for a delivered demo, where
+Alation doing the extraction *is* the story. Details in `../docs/agent-kit-viability.md`.
 
 ---
 
@@ -212,10 +219,9 @@ as the capability banks find hardest, and the ECB's *Guide on effective RDARR*
 ## Open items
 
 - **CDE API status is unresolved.** Alation's public docs say CDE Manager
-  standards and CDEs have no REST API, but the masterclass provisioning script
-  successfully calls `/cde-service/integration/standard/` and `.../cde/` with a
-  `CDEToken` header. Working code beats documentation; confirm on a live
-  instance, because it decides whether `creation_mode: cde_service` is real.
+  standards and CDEs have no REST API, but `/cde-service/integration/` IS
+  documented on developer.alation.com, `CDEToken` header included. The public
+  docs are stale. Worth a live confirmation before relying on it.
 - **`extract_text()` in `invoke.py` is best-effort.** The task-result shape isn't
   fully documented; tighten it once you've seen real responses.
 - **`/call` is async** (returns `task_id`, then poll). promptfoo can't poll, so

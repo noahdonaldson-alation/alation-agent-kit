@@ -266,11 +266,11 @@ returns a `warnings` list telling you what needs manual attention.
 
 ## Things that are known-unresolved
 
-- **CDE API status.** Public docs say CDE Manager standards and CDEs have no
-  REST API; the masterclass script in `../reference/masterclass/` successfully
-  calls `/cde-service/integration/standard/` with a `CDEToken` header. Working
-  code beats documentation, but confirm on a live instance — it decides whether
-  `creation_mode: cde_service` in the output schema is real.
+- **CDE API status.** Alation's product docs say CDE Manager standards and CDEs
+  have no REST API, but `/cde-service/integration/` **is** documented on
+  developer.alation.com, `CDEToken` header included — the product docs are
+  stale. Confirm on a live instance before relying on it, since it decides
+  whether creating CDEs and standards can be automated at all.
 - **Gate 2 of the evals** needs `/stream` or a custom promptfoo provider, since
   `/call` is async and promptfoo can't poll.
 - **`extract_text()`** is best-effort until we've seen real responses.
