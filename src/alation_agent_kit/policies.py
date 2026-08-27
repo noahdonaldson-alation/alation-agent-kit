@@ -1,27 +1,46 @@
-"""Provision policy groups, business policies and CDE overlay standards.
+"""Provision business policies and CDE overlay standards.
 
 Higher stakes than anything else in this kit: it writes governance objects into
-a customer's catalog. So it is built around four rules.
+a customer's catalog. Four rules:
 
 1. **`plan` before `apply`.** Nothing is created until a human has seen the list.
-2. **Namespace prefix on everything created**, so our objects stay visually and
-   programmatically separable from the customer's own.
+2. **Namespace prefix on everything created.** Not cosmetic — see the id-recovery
+   note below. It is how we know which policy is ours.
 3. **Every created object recorded by ID** in the deployment state file.
-4. **`destroy` deletes by recorded ID, never by name.** If it is not in the
-   state file, we did not create it and we do not touch it.
+4. **`destroy` deletes by recorded ID, never by name.** If it is not in the state
+   file, we did not create it and we do not touch it.
 
-Two API surfaces, and they differ in more than the path:
+## What the API actually looks like
 
-| Object | Endpoint | Auth | Notes |
-|---|---|---|---|
-| Policy group | `/integration/v2/policy_group/` | OAuth bearer | |
-| Business policy | `/integration/v2/business_policies/` | OAuth bearer | array body, 202 + async job |
-| Overlay standard | `/cde-service/integration/standard/` | **`CDEToken` header** | needs a source policy; inherits its name |
+Verified against developer.alation.com and Allie-SDK's working client (the docs
+and the SDK disagree in one place; the SDK wins — see `_GROUP_PATHS`).
 
-The CDE service uses a token from `POST /cde-service/integration/auth/` sent as
-`CDEToken`, not the OAuth bearer. Alation's product docs claim there is no REST
-API for standards; developer.alation.com documents one. Treat standards as
-unverified until `verify_standards_api()` says otherwise.
+| Object | Endpoint | Notes |
+|---|---|---|
+| Policy group | `GET /integration/v1/policy_group` | **GET only. No create.** |
+| Business policy | `GET/POST/PUT/DELETE /integration/v1/business_policies/` | bulk; body is a bare array |
+| Overlay standard | `POST /cde-service/integration/standard/` | `CDEToken` header, not the bearer |
+
+**It is v1, not v2.** No `v2` policy path exists on any version; a `v2` request
+404s with an HTML error page from the Django router.
+
+**Policy groups cannot be created.** So a group is a declared prerequisite:
+we resolve its title to an id and fail with an instruction if it is absent.
+Association is then set from the policy side via `policy_group_ids`.
+
+**Policy create is async and does not return ids.** `POST` answers 202 with
+`{"task": {"id": N, ...}}`; polling `GET /api/v1/bulk_metadata/job/?id=N` returns
+prose only — *"Successfully processed 2 items"* — with no object ids. Documents
+and terms return ids; policies do not. So ids are recovered by searching for the
+namespaced title afterwards, which is why the prefix matters: without it we
+cannot tell our "Risk Data Completeness" from one the customer already had.
+
+**PUT is not shaped like POST.** On update, `id` is required and
+`policy_group_ids` becomes `{"add": [], "remove": [], "replace": []}` rather than
+a flat list. We do not update policies today; if that changes, this is the trap.
+
+**Omit empty keys.** The bulk endpoints reject a body carrying nulls or empty
+values, so `_clean()` strips them.
 """
 
 from __future__ import annotations
@@ -33,28 +52,35 @@ from typing import Any
 from .client import AlationClient, AlationError
 from .state import DeploymentState
 
-POLICY_GROUP = "/integration/v2/policy_group/"
-POLICIES = "/integration/v2/business_policies/"
+# Allie-SDK carries an explicit comment that this path must NOT have a trailing
+# slash, dated Jan 2024, while the OpenAPI spec shows one. Working code beats the
+# spec, but the comment may be stale — so try both and remember which worked.
+_GROUP_PATHS = ("/integration/v1/policy_group", "/integration/v1/policy_group/")
+POLICIES = "/integration/v1/business_policies/"
+JOB = "/api/v1/bulk_metadata/job/"
 CDE_AUTH = "/cde-service/integration/auth/"
 STANDARDS = "/cde-service/integration/standard/"
 
-# Reverse of creation order. A standard depends on its policy; a policy on its
-# group. Teardown must run the other way.
-KIND_ORDER = ["policy_group", "policy", "standard"]
+KIND_ORDER = ["policy", "standard"]   # reverse of creation order for teardown
+
+
+def _clean(body: dict) -> dict:
+    """Drop null/empty values — the bulk endpoints reject them."""
+    return {k: v for k, v in body.items() if v not in (None, "", [], {})}
 
 
 @dataclass
 class Action:
-    verb: str          # create | skip | unsupported
+    verb: str          # create | skip | prerequisite | unsupported
     kind: str
     ref: str
     name: str
     reason: str = ""
 
     def __str__(self) -> str:
-        mark = {"create": "+", "skip": "=", "unsupported": "!"}[self.verb]
+        mark = {"create": "+", "skip": "=", "prerequisite": "?", "unsupported": "!"}
         tail = f"   ({self.reason})" if self.reason else ""
-        return f"  {mark} {self.kind:13} {self.name}{tail}"
+        return f"  {mark[self.verb]} {self.kind:13} {self.name}{tail}"
 
 
 class PolicyProvisioner:
@@ -62,19 +88,62 @@ class PolicyProvisioner:
                  prefix: str = ""):
         self.c = client
         self.state = state
-        self.prefix = prefix if prefix is not None else state.prefix
+        self.prefix = prefix or ""
         self._cde_token: str | None = None
+        self._group_path: str | None = None
 
-    # -- naming ------------------------------------------------------------
     def prefixed(self, name: str) -> str:
-        """Namespace everything we create, so it is separable from the
-        customer's own objects and safe to remove."""
         return f"{self.prefix}{name}" if self.prefix else name
 
-    # -- CDE service auth --------------------------------------------------
+    # -- policy groups: read-only, therefore a prerequisite ----------------
+    def _list_groups(self) -> list[dict]:
+        """Try both path spellings once, then remember which worked."""
+        paths = (self._group_path,) if self._group_path else _GROUP_PATHS
+        last: Exception | None = None
+        for path in paths:
+            try:
+                resp = self.c.get(f"{path}?limit=500")
+            except (AlationError, RuntimeError) as err:
+                last = err
+                continue
+            self._group_path = path
+            if isinstance(resp, list):
+                return resp
+            for key in ("results", "items", "data", "policy_groups"):
+                if isinstance(resp, dict) and isinstance(resp.get(key), list):
+                    return resp[key]
+            return []
+        raise RuntimeError(
+            f"Could not list policy groups at any of {_GROUP_PATHS}. Last error: {last}"
+        )
+
+    def resolve_group(self, title: str) -> int | None:
+        want = title.strip().lower()
+        for g in self._list_groups():
+            if (g.get("title") or "").strip().lower() == want:
+                return g.get("id")
+        return None
+
+    # -- policies ----------------------------------------------------------
+    def _list_policies(self, search: str | None = None) -> list[dict]:
+        path = f"{POLICIES}?limit=500" + (f"&search={search}" if search else "")
+        resp = self.c.get(path)
+        if isinstance(resp, list):
+            return resp
+        for key in ("results", "items", "data", "policies"):
+            if isinstance(resp, dict) and isinstance(resp.get(key), list):
+                return resp[key]
+        return []
+
+    def find_policy(self, title: str) -> dict | None:
+        want = title.strip().lower()
+        for p in self._list_policies(search=title):
+            if (p.get("title") or "").strip().lower() == want:
+                return p
+        return None
+
+    # -- CDE service -------------------------------------------------------
     def cde_token(self) -> str:
-        """The CDE service wants its own token in a `CDEToken` header, obtained
-        with the legacy API token — not the OAuth bearer used everywhere else."""
         if self._cde_token:
             return self._cde_token
         legacy = self.c.s.access_token
@@ -82,7 +151,7 @@ class PolicyProvisioner:
             raise RuntimeError(
                 "CDE standards need ALATION_ACCESS_TOKEN (a legacy API token) in "
                 ".env — the CDE service does not accept the OAuth bearer. Policies "
-                "and groups work without it; run with --skip standards to proceed."
+                "work without it; use --only policy to skip standards."
             )
         resp = self.c.request("POST", CDE_AUTH, None,
                               extra_headers={"Token": legacy})
@@ -94,78 +163,52 @@ class PolicyProvisioner:
         return tok
 
     def verify_standards_api(self) -> tuple[bool, str]:
-        """Can standards be created here at all? Read-only probe, safe to run."""
         try:
-            self.c.request("GET", f"{STANDARDS}?limit=1",
-                           extra_headers={"CDEToken": self.cde_token()})
+            self.c.get(f"{STANDARDS}?limit=1",
+                       extra_headers={"CDEToken": self.cde_token()})
             return True, "reachable"
-        except RuntimeError as err:
-            return False, str(err)[:200]
-
-    # -- read --------------------------------------------------------------
-    def _list(self, path: str, extra_headers: dict | None = None) -> list[dict]:
-        resp = self.c.request("GET", f"{path}?limit=500", extra_headers=extra_headers)
-        if isinstance(resp, list):
-            return resp
-        for key in ("results", "items", "data", "policies", "standards"):
-            if isinstance(resp, dict) and isinstance(resp.get(key), list):
-                return resp[key]
-        return []
-
-    def find_by_title(self, path: str, title: str,
-                      extra_headers: dict | None = None) -> dict | None:
-        want = title.strip().lower()
-        for row in self._list(path, extra_headers):
-            for field in ("title", "name"):
-                if (row.get(field) or "").strip().lower() == want:
-                    return row
-        return None
+        except (AlationError, RuntimeError) as err:
+            return False, str(err)[:180]
 
     # -- plan --------------------------------------------------------------
     def plan(self, spec: dict) -> list[Action]:
-        """What would happen. Reads only.
-
-        An object already recorded in state, or already present under the same
-        prefixed title, is a skip — apply is idempotent and never duplicates.
-        """
+        """Reads only. Nothing is created."""
         actions: list[Action] = []
 
         group = spec.get("policy_group")
+        group_id = None
         if group:
-            name = self.prefixed(group["title"])
-            if self.state.id_for("policy_group", group["ref"]):
-                actions.append(Action("skip", "policy_group", group["ref"], name,
-                                      "already created by this kit"))
-            elif self.find_by_title(POLICY_GROUP, name):
-                actions.append(Action("skip", "policy_group", group["ref"], name,
-                                      "exists on the instance"))
+            title = group["title"]           # NOT prefixed: it is the customer's
+            group_id = self.resolve_group(title)
+            if group_id:
+                actions.append(Action("skip", "policy_group", group["ref"],
+                                      title, f"exists, id={group_id}"))
             else:
-                actions.append(Action("create", "policy_group", group["ref"], name))
+                actions.append(Action(
+                    "prerequisite", "policy_group", group["ref"], title,
+                    "MISSING — policy groups have no create API; make it in the UI"))
 
         for p in spec.get("policies") or []:
             name = self.prefixed(p["title"])
             if self.state.id_for("policy", p["ref"]):
                 actions.append(Action("skip", "policy", p["ref"], name,
                                       "already created by this kit"))
-            elif self.find_by_title(POLICIES, name):
+            elif self.find_policy(name):
                 actions.append(Action("skip", "policy", p["ref"], name,
-                                      "exists on the instance"))
+                                      "exists on the instance, not ours"))
             else:
                 actions.append(Action("create", "policy", p["ref"], name))
 
-        standards = spec.get("standards") or []
-        if standards:
+        if spec.get("standards"):
             ok, why = self.verify_standards_api()
-            for s in standards:
-                # A standard inherits its source policy's name, so it is not
-                # separately titled.
+            for s in spec["standards"]:
                 src = s.get("from_policy")
-                name = self.prefixed(
-                    next((p["title"] for p in spec.get("policies") or []
-                          if p["ref"] == src), src or "?"))
+                title = next((p["title"] for p in spec.get("policies") or []
+                              if p["ref"] == src), src or "?")
+                name = self.prefixed(title)      # standards inherit the policy name
                 if not ok:
                     actions.append(Action("unsupported", "standard", s["ref"], name,
-                                          f"CDE standards API unreachable: {why}"))
+                                          f"CDE standards API: {why}"))
                 elif self.state.id_for("standard", s["ref"]):
                     actions.append(Action("skip", "standard", s["ref"], name,
                                           "already created by this kit"))
@@ -175,85 +218,88 @@ class PolicyProvisioner:
 
     # -- apply -------------------------------------------------------------
     def apply(self, spec: dict, only: set[str] | None = None) -> list[str]:
-        """Create what the plan says, in dependency order. Returns a log."""
         log: list[str] = []
-        want = only or {"policy_group", "policy", "standard"}
+        want = only or {"policy", "standard"}
 
         group_id = None
         group = spec.get("policy_group")
-        if group and "policy_group" in want:
-            group_id = self._ensure_group(group, log)
+        if group:
+            group_id = self.resolve_group(group["title"])
+            if group_id:
+                log.append(f"  = policy_group {group['title']} (id={group_id})")
+            else:
+                log.append(
+                    f"  ? policy_group {group['title']!r} does not exist. Policy "
+                    f"groups have no create API — create it in the UI, then re-run. "
+                    f"Proceeding without a group.")
 
-        policy_ids: dict[str, str] = {}
+        created_refs: dict[str, str] = {}
         if "policy" in want:
             for p in spec.get("policies") or []:
                 pid = self._ensure_policy(p, group_id, log)
                 if pid:
-                    policy_ids[p["ref"]] = pid
+                    created_refs[p["ref"]] = pid
 
         if "standard" in want and spec.get("standards"):
             ok, why = self.verify_standards_api()
             if not ok:
-                log.append(f"  ! skipping standards — API unreachable: {why}")
+                log.append(f"  ! skipping standards — {why}")
                 log.append("    Create them in the UI; they become a prerequisite.")
             else:
                 for s in spec["standards"]:
-                    self._ensure_standard(s, spec, policy_ids, log)
+                    self._ensure_standard(s, spec, created_refs, log)
         return log
 
-    def _ensure_group(self, group: dict, log: list[str]) -> str | None:
-        name = self.prefixed(group["title"])
-        existing_id = self.state.id_for("policy_group", group["ref"])
-        if existing_id:
-            log.append(f"  = policy_group {name} (already ours: {existing_id})")
-            return existing_id
-        found = self.find_by_title(POLICY_GROUP, name)
-        if found:
-            log.append(f"  = policy_group {name} (pre-existing, not recorded — "
-                       f"will NOT be removed by destroy)")
-            return str(found.get("id"))
-
-        resp = self.c.post(POLICY_GROUP, json_body={
-            "title": name, "description": group.get("description", "")})
-        gid = _first_id(resp)
-        if gid:
-            self.state.record("policy_group", group["ref"], gid, name)
-            log.append(f"  + policy_group {name} -> {gid}")
-        else:
-            log.append(f"  ! policy_group {name}: no id returned ({resp})")
-        return gid
-
-    def _ensure_policy(self, p: dict, group_id: str | None,
+    def _ensure_policy(self, p: dict, group_id: int | None,
                        log: list[str]) -> str | None:
         name = self.prefixed(p["title"])
-        existing_id = self.state.id_for("policy", p["ref"])
-        if existing_id:
-            log.append(f"  = policy {name} (already ours: {existing_id})")
-            return existing_id
-        found = self.find_by_title(POLICIES, name)
+
+        recorded = self.state.id_for("policy", p["ref"])
+        if recorded:
+            log.append(f"  = policy {name} (already ours: {recorded})")
+            return recorded
+
+        found = self.find_policy(name)
         if found:
-            log.append(f"  = policy {name} (pre-existing, not recorded — "
-                       f"will NOT be removed by destroy)")
+            log.append(f"  = policy {name} (pre-existing, id={found.get('id')} — "
+                       f"NOT recorded, so destroy will not remove it)")
             return str(found.get("id"))
 
-        body: dict[str, Any] = {"title": name,
-                                "description": p.get("description", "")}
-        if group_id:
-            body["policy_group_ids"] = [group_id]
-        if p.get("fields"):
-            body["fields"] = p["fields"]
+        body = _clean({
+            "title": name,
+            "description": p.get("description"),
+            "policy_group_ids": [group_id] if group_id else None,
+            "template_id": p.get("template_id"),
+            "fields": p.get("fields"),
+        })
+        resp = self.c.post(POLICIES, json_body=[body])   # bulk: bare array
 
-        # The policy API takes an array and answers 202 with an async job.
-        resp = self.c.post(POLICIES, json_body=[body])
-        pid = _first_id(resp)
-        if not pid:
-            pid = self._await_by_title(POLICIES, name, log)
+        task_id = None
+        if isinstance(resp, dict):
+            task_id = (resp.get("task") or {}).get("id") or resp.get("job_id")
+        if task_id:
+            state = self._await_job(task_id, log)
+            if state and state not in ("successful", "partially_successful"):
+                log.append(f"  ! policy {name}: job {task_id} ended {state}")
+                return None
+
+        # The job carries no object ids, so recover by the namespaced title.
+        pid = None
+        for _ in range(6):
+            found = self.find_policy(name)
+            if found and found.get("id"):
+                pid = str(found["id"])
+                break
+            time.sleep(2)
+
         if pid:
             self.state.record("policy", p["ref"], pid, name,
                               policy_group_id=group_id)
             log.append(f"  + policy {name} -> {pid}")
         else:
-            log.append(f"  ! policy {name}: created but no id resolved ({resp})")
+            log.append(f"  ! policy {name}: created but its id could not be "
+                       f"recovered by search. It may exist un-recorded — check the "
+                       f"UI before re-running, or destroy cannot remove it.")
         return pid
 
     def _ensure_standard(self, s: dict, spec: dict,
@@ -264,92 +310,102 @@ class PolicyProvisioner:
                       if p["ref"] == src_ref), None)
         if not src_id or not title:
             log.append(f"  ! standard {s['ref']}: source policy {src_ref!r} not "
-                       f"available — a standard requires exactly one source policy")
+                       f"available — a standard needs exactly one source policy")
             return None
 
-        name = self.prefixed(title)   # inherited from the policy
+        name = self.prefixed(title)
         if self.state.id_for("standard", s["ref"]):
             log.append(f"  = standard {name} (already ours)")
             return self.state.id_for("standard", s["ref"])
 
-        body = {
+        body = _clean({
             "name": name,
-            "purpose": s.get("purpose", ""),
-            "scope": s.get("scope", ""),
-            "derived_requirements": s.get("derived_requirements") or [],
+            "purpose": s.get("purpose"),
+            "scope": s.get("scope"),
+            "derived_requirements": s.get("derived_requirements"),
             "options": {"allow_duplicates": False},
-        }
+        })
         try:
             resp = self.c.post(STANDARDS, json_body=body,
                                extra_headers={"CDEToken": self.cde_token()})
-        except AlationError as err:
-            log.append(f"  ! standard {name}: {err}")
+        except (AlationError, RuntimeError) as err:
+            log.append(f"  ! standard {name}: {str(err)[:160]}")
             return None
-        sid = _first_id(resp) or (resp.get("key") if isinstance(resp, dict) else None)
+
+        sid = None
+        if isinstance(resp, dict):
+            sid = resp.get("id") or resp.get("key")
         if sid:
-            self.state.record("standard", s["ref"], sid, name,
+            self.state.record("standard", s["ref"], str(sid), name,
                               source_policy_id=src_id)
             log.append(f"  + standard {name} -> {sid}")
         else:
             log.append(f"  ! standard {name}: no id/key returned ({resp})")
         return sid
 
-    def _await_by_title(self, path: str, title: str, log: list[str],
-                        attempts: int = 6, wait: float = 2.0) -> str | None:
-        """The policy API is async, so the id may not come back on the response.
-        Poll the list until the object appears."""
-        for i in range(attempts):
+    def _await_job(self, task_id: Any, log: list[str],
+                   attempts: int = 15, wait: float = 2.0) -> str | None:
+        """Poll the bulk job. Note the path is /api/v1/, not /integration/."""
+        for _ in range(attempts):
+            try:
+                resp = self.c.get(f"{JOB}?id={task_id}")
+            except (AlationError, RuntimeError):
+                return None
+            if isinstance(resp, list) and resp:
+                resp = resp[0]
+            status = str((resp or {}).get("status") or "").lower()
+            if status in ("successful", "partially_successful", "failed"):
+                return status
             time.sleep(wait)
-            found = self.find_by_title(path, title)
-            if found and found.get("id"):
-                return str(found["id"])
-        log.append(f"    (waited {attempts * wait:.0f}s for {title!r} to appear)")
+        log.append(f"    (job {task_id} still running after "
+                   f"{attempts * wait:.0f}s; continuing)")
         return None
 
     # -- destroy -----------------------------------------------------------
     def destroy(self, dry_run: bool = True) -> list[str]:
-        """Delete only what this kit recorded creating, in reverse dependency
-        order, by ID. Never matches on name."""
+        """Delete only recorded objects, in reverse dependency order, by ID."""
         log: list[str] = []
         records = self.state.teardown_order(KIND_ORDER)
         if not records:
             return ["  nothing recorded — this kit has created nothing to remove"]
 
-        for rec in records:
-            kind, oid, name = rec["kind"], rec["id"], rec["name"]
+        standards = [r for r in records if r["kind"] == "standard"]
+        policies = [r for r in records if r["kind"] == "policy"]
+        other = [r for r in records if r["kind"] not in ("standard", "policy")]
+
+        for rec in standards:
             if dry_run:
-                log.append(f"  - would delete {kind:13} {name} (id={oid})")
+                log.append(f"  - would delete standard {rec['name']} (id={rec['id']})")
                 continue
             try:
-                if kind == "standard":
-                    self.c.delete(f"{STANDARDS}{oid}/",
-                                  extra_headers={"CDEToken": self.cde_token()})
-                elif kind == "policy":
-                    # array body, consistent with create
-                    self.c.request("DELETE", POLICIES, json_body=[{"id": oid}])
-                elif kind == "policy_group":
-                    self.c.delete(f"{POLICY_GROUP}{oid}/")
-                else:
-                    log.append(f"  ? {kind} {name}: no delete rule, left in place")
-                    continue
+                self.c.delete(f"{STANDARDS}{rec['id']}/",
+                              extra_headers={"CDEToken": self.cde_token()})
             except (AlationError, RuntimeError) as err:
-                log.append(f"  ! {kind} {name} (id={oid}): {str(err)[:140]}")
+                log.append(f"  ! standard {rec['name']}: {str(err)[:140]}")
                 continue
-            self.state.forget(kind, rec["ref"])
-            log.append(f"  - deleted {kind:13} {name} (id={oid})")
+            self.state.forget("standard", rec["ref"])
+            log.append(f"  - deleted standard {rec['name']} (id={rec['id']})")
+
+        if policies:
+            ids = [int(r["id"]) for r in policies if str(r["id"]).isdigit()]
+            if dry_run:
+                for r in policies:
+                    log.append(f"  - would delete policy {r['name']} (id={r['id']})")
+            elif ids:
+                # DELETE is synchronous and takes {"ids": [...]} — one call.
+                try:
+                    self.c.request("DELETE", POLICIES, json_body={"ids": ids})
+                except (AlationError, RuntimeError) as err:
+                    log.append(f"  ! deleting policies {ids}: {str(err)[:160]}")
+                else:
+                    for r in policies:
+                        self.state.forget("policy", r["ref"])
+                        log.append(f"  - deleted policy {r['name']} (id={r['id']})")
+
+        for rec in other:
+            log.append(f"  ? {rec['kind']} {rec['name']}: no delete rule, left alone")
+
+        log.append("")
+        log.append("  Policy groups are never deleted: this kit cannot create them, "
+                   "so it does not own them.")
         return log
-
-
-def _first_id(resp: Any) -> str | None:
-    """Pull an id out of a response that may be an object, a list, or a job."""
-    if isinstance(resp, dict):
-        for key in ("id", "policy_id", "group_id", "key"):
-            if resp.get(key):
-                return str(resp[key])
-        for key in ("result", "data", "policies"):
-            nested = resp.get(key)
-            if nested:
-                return _first_id(nested)
-    if isinstance(resp, list) and resp:
-        return _first_id(resp[0])
-    return None

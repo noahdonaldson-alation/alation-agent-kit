@@ -7,40 +7,70 @@
     "published": "2013-01-09",
     "source_url": "https://www.bis.org/publ/bcbs239.pdf"
   },
-
   "policy_group": {
     "ref": "PG-BCBS239",
     "title": "BCBS 239",
-    "description": "<p>Principles for effective risk data aggregation and risk reporting (Basel Committee, January 2013). Groups the policies derived from the bank-facing principles 1&ndash;11. Principles 12&ndash;14 address supervisors and are out of scope.</p><p>Source: <a href=\"https://www.bis.org/publ/bcbs239.pdf\">bis.org/publ/bcbs239.pdf</a></p>"
+    "description": "<p>Principles for effective risk data aggregation and risk reporting (Basel Committee, January 2013). Groups the policies derived from the bank-facing principles 1&ndash;11. Principles 12&ndash;14 address supervisors and are out of scope.</p><p>Source: <a href=\"https://www.bis.org/publ/bcbs239.pdf\">bis.org/publ/bcbs239.pdf</a></p>",
+    "$comment": "PREREQUISITE, not created by the kit. Policy groups have no create API (GET /integration/v1/policy_group is read-only), so this group must exist in the instance. The provider resolves it by title and warns if absent. Note the title is NOT namespace-prefixed: it refers to the customer's own object."
   },
-
   "policies": [
     {
       "ref": "POL-ARCH",
       "title": "Risk Data Architecture and Identification",
-      "derived_from": {"principle": 2, "paragraphs": [32, 33, 34, 35]},
+      "derived_from": {
+        "principle": 2,
+        "paragraphs": [
+          32,
+          33,
+          34,
+          35
+        ]
+      },
       "description": "<p><strong>Principle 2 &mdash; Data architecture and IT infrastructure.</strong> A bank shall maintain integrated data taxonomies and architecture across the banking group, including single identifiers and unified naming conventions, and shall work toward a single authoritative source for risk data per risk type.</p><p><em>&para;33:</em> \"A bank should establish integrated data taxonomies and architecture across the banking group, which includes information on the characteristics of the data (metadata), as well as use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts.\"</p><p><em>&para;36(d):</em> \"A bank should strive towards a single authoritative source for risk data per each type of risk.\"</p>"
     },
     {
       "ref": "POL-ACCURACY",
       "title": "Risk Data Accuracy and Reconciliation",
-      "derived_from": {"principle": 3, "paragraphs": [36, 37, 38, 39, 40]},
+      "derived_from": {
+        "principle": 3,
+        "paragraphs": [
+          36,
+          37,
+          38,
+          39,
+          40
+        ]
+      },
       "description": "<p><strong>Principle 3 &mdash; Accuracy and Integrity.</strong> Risk data shall be aggregated on a largely automated basis so as to minimise the probability of errors, with controls as robust as those applied to accounting data, reconciliation to source systems, and measured, monitored accuracy with defined escalation.</p><p><em>&para;36(a):</em> \"Controls surrounding risk data should be as robust as those applicable to accounting data.\"</p><p><em>&para;36(c):</em> \"Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate.\"</p><p><em>&para;40:</em> \"Supervisors expect banks to measure and monitor the accuracy of data and to develop appropriate escalation channels and action plans to be in place to rectify poor data quality.\"</p>"
     },
     {
       "ref": "POL-COMPLETE",
       "title": "Risk Data Completeness",
-      "derived_from": {"principle": 4, "paragraphs": [41, 42, 43]},
+      "derived_from": {
+        "principle": 4,
+        "paragraphs": [
+          41,
+          42,
+          43
+        ]
+      },
       "description": "<p><strong>Principle 4 &mdash; Completeness.</strong> A bank shall capture and aggregate all material risk data across the banking group, including off-balance-sheet exposures, available by business line, legal entity, asset type, industry, region and other groupings relevant to the risk in question. Completeness shall be measured and monitored, and the impact of any incompleteness assessed.</p><p><em>&para;41:</em> \"A bank's risk data aggregation capabilities should include all material risk exposures, including those that are off-balance sheet.\"</p><p><em>&para;43:</em> \"Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data. Where risk data is not entirely complete, the impact should not be critical.\"</p>"
     },
     {
       "ref": "POL-TIMELY",
       "title": "Risk Data Timeliness",
-      "derived_from": {"principle": 5, "paragraphs": [44, 45, 46, 47]},
+      "derived_from": {
+        "principle": 5,
+        "paragraphs": [
+          44,
+          45,
+          46,
+          47
+        ]
+      },
       "description": "<p><strong>Principle 5 &mdash; Timeliness.</strong> A bank shall be able to generate aggregate, up-to-date risk data in a timely manner while meeting the accuracy, integrity, completeness and adaptability principles, with speed requirements set per risk type and the capability tested under stress conditions.</p><p><em>&para;44:</em> \"A bank's risk data aggregation capabilities should ensure that it is able to produce aggregate risk information on a timely basis to meet all reporting requirements.\"</p><p><em>&para;46:</em> names the specific critical risks requiring rapid aggregation, including aggregated credit exposure to a large corporate borrower and counterparty credit risk exposures.</p>"
     }
   ],
-
   "standards": [
     {
       "ref": "STD-ARCH",
@@ -52,18 +82,38 @@
           "name": "Authoritative source",
           "description": "Whether a single authoritative source has been identified for this element, per ¶36(d).",
           "fields": [
-            {"name": "Single authoritative source identified", "type": "picker",
-             "accepted_values": ["Yes", "No", "In progress"]},
-            {"name": "Authoritative source system", "type": "text"}
+            {
+              "name": "Single authoritative source identified",
+              "type": "picker",
+              "accepted_values": [
+                "Yes",
+                "No",
+                "In progress"
+              ]
+            },
+            {
+              "name": "Authoritative source system",
+              "type": "text"
+            }
           ]
         },
         {
           "name": "Enterprise identifier",
           "description": "Whether this element uses a governed enterprise-wide identifier and naming convention, per ¶33.",
           "fields": [
-            {"name": "Uses enterprise-standard identifier", "type": "picker",
-             "accepted_values": ["Yes", "Local identifier only", "Not applicable"]},
-            {"name": "Governing taxonomy or code set", "type": "text"}
+            {
+              "name": "Uses enterprise-standard identifier",
+              "type": "picker",
+              "accepted_values": [
+                "Yes",
+                "Local identifier only",
+                "Not applicable"
+              ]
+            },
+            {
+              "name": "Governing taxonomy or code set",
+              "type": "text"
+            }
           ]
         }
       ]
@@ -78,29 +128,68 @@
           "name": "Reconciliation to system of record",
           "description": "Whether this element is reconciled to accounting or source systems, per ¶36(c).",
           "fields": [
-            {"name": "Reconciled to system of record", "type": "picker",
-             "accepted_values": ["Yes - automated", "Yes - manual", "No"]},
-            {"name": "Reconciliation frequency", "type": "picker",
-             "accepted_values": ["Intraday", "Daily", "Weekly", "Monthly", "None"]},
-            {"name": "Reconciliation reference", "type": "text"}
+            {
+              "name": "Reconciled to system of record",
+              "type": "picker",
+              "accepted_values": [
+                "Yes - automated",
+                "Yes - manual",
+                "No"
+              ]
+            },
+            {
+              "name": "Reconciliation frequency",
+              "type": "picker",
+              "accepted_values": [
+                "Intraday",
+                "Daily",
+                "Weekly",
+                "Monthly",
+                "None"
+              ]
+            },
+            {
+              "name": "Reconciliation reference",
+              "type": "text"
+            }
           ]
         },
         {
           "name": "Accuracy monitoring and escalation",
           "description": "Whether accuracy is measured and monitored with an escalation path, per ¶40.",
           "fields": [
-            {"name": "Accuracy monitoring in place", "type": "picker",
-             "accepted_values": ["Yes", "No", "Planned"]},
-            {"name": "Escalation path for poor quality", "type": "text"}
+            {
+              "name": "Accuracy monitoring in place",
+              "type": "picker",
+              "accepted_values": [
+                "Yes",
+                "No",
+                "Planned"
+              ]
+            },
+            {
+              "name": "Escalation path for poor quality",
+              "type": "text"
+            }
           ]
         },
         {
           "name": "Manual and EUC intervention",
           "description": "Whether manual processes or desktop applications contribute to this element, and whether that is documented, per ¶36(b) and ¶39.",
           "fields": [
-            {"name": "Manual or EUC intervention in the flow", "type": "picker",
-             "accepted_values": ["None", "Documented", "Undocumented"]},
-            {"name": "Mitigating controls", "type": "text"}
+            {
+              "name": "Manual or EUC intervention in the flow",
+              "type": "picker",
+              "accepted_values": [
+                "None",
+                "Documented",
+                "Undocumented"
+              ]
+            },
+            {
+              "name": "Mitigating controls",
+              "type": "text"
+            }
           ]
         }
       ]
@@ -115,20 +204,47 @@
           "name": "Completeness monitoring",
           "description": "Whether completeness is measured and monitored, per ¶43.",
           "fields": [
-            {"name": "Completeness measured and monitored", "type": "picker",
-             "accepted_values": ["Yes", "No", "Planned"]},
-            {"name": "Current measured completeness", "type": "text"}
+            {
+              "name": "Completeness measured and monitored",
+              "type": "picker",
+              "accepted_values": [
+                "Yes",
+                "No",
+                "Planned"
+              ]
+            },
+            {
+              "name": "Current measured completeness",
+              "type": "text"
+            }
           ]
         },
         {
           "name": "Coverage exclusions",
           "description": "What is knowingly excluded from this element's population, and whether the materiality of that exclusion has been assessed, per ¶43.",
           "fields": [
-            {"name": "Known coverage exclusions", "type": "text"},
-            {"name": "Materiality of exclusions assessed", "type": "picker",
-             "accepted_values": ["Yes", "No", "No exclusions"]},
-            {"name": "Covers off-balance-sheet exposures", "type": "picker",
-             "accepted_values": ["Yes", "No", "Not applicable"]}
+            {
+              "name": "Known coverage exclusions",
+              "type": "text"
+            },
+            {
+              "name": "Materiality of exclusions assessed",
+              "type": "picker",
+              "accepted_values": [
+                "Yes",
+                "No",
+                "No exclusions"
+              ]
+            },
+            {
+              "name": "Covers off-balance-sheet exposures",
+              "type": "picker",
+              "accepted_values": [
+                "Yes",
+                "No",
+                "Not applicable"
+              ]
+            }
           ]
         }
       ]
@@ -143,31 +259,57 @@
           "name": "Availability SLA",
           "description": "Whether a timeliness target is defined for this element, per ¶44-45.",
           "fields": [
-            {"name": "Availability SLA defined", "type": "picker",
-             "accepted_values": ["Yes", "No"]},
-            {"name": "SLA target", "type": "text"}
+            {
+              "name": "Availability SLA defined",
+              "type": "picker",
+              "accepted_values": [
+                "Yes",
+                "No"
+              ]
+            },
+            {
+              "name": "SLA target",
+              "type": "text"
+            }
           ]
         },
         {
           "name": "Stress-condition capability",
           "description": "Whether the ability to deliver this element within its SLA has been tested under stress, per ¶46-47.",
           "fields": [
-            {"name": "Meets SLA under stress conditions", "type": "picker",
-             "accepted_values": ["Tested - passes", "Tested - fails", "Not tested"]},
-            {"name": "Date last tested", "type": "text"}
+            {
+              "name": "Meets SLA under stress conditions",
+              "type": "picker",
+              "accepted_values": [
+                "Tested - passes",
+                "Tested - fails",
+                "Not tested"
+              ]
+            },
+            {
+              "name": "Date last tested",
+              "type": "text"
+            }
           ]
         }
       ]
     }
   ],
-
   "standard_attachment": {
     "$comment": "Which standards attach to a CDE is DERIVABLE from the principles in its driven_by, not inferred. Neither agent needs to know policies exist.",
     "by_principle": {
-      "2": ["STD-ARCH"],
-      "3": ["STD-ACCURACY"],
-      "4": ["STD-COMPLETE"],
-      "5": ["STD-TIMELY"],
+      "2": [
+        "STD-ARCH"
+      ],
+      "3": [
+        "STD-ACCURACY"
+      ],
+      "4": [
+        "STD-COMPLETE"
+      ],
+      "5": [
+        "STD-TIMELY"
+      ],
       "6": [],
       "7": [],
       "8": [],
