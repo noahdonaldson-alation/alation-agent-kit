@@ -45,6 +45,7 @@ values, so `_clean()` strips them.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -60,6 +61,38 @@ POLICIES = "/integration/v1/business_policies/"
 JOB = "/api/v1/bulk_metadata/job/"
 CDE_AUTH = "/cde-service/integration/auth/"
 STANDARDS = "/cde-service/integration/standard/"
+
+# Standard status is a state machine, not a field you set. Verified by
+# experiment 2026-08-27: DRAFT -> PUBLISHED is refused with
+# "Invalid target status for Standard status transition: PolicyStatus.PUBLISHED"
+# — publishing must route through PENDING_APPROVAL. IN_REVIEW is in the
+# PolicyStatus enum but is NOT settable via this endpoint, so it can only be a
+# state we observe (the approval workflow puts it there), never one we request.
+STATUS_EDGES = {
+    "DRAFT": {"PENDING_APPROVAL"},
+    "PENDING_APPROVAL": {"PUBLISHED", "DRAFT"},
+    "IN_REVIEW": {"PUBLISHED", "DRAFT"},
+    "PUBLISHED": {"DRAFT"},
+}
+
+
+def status_path(current: str, target: str) -> list[str] | None:
+    """Shortest legal sequence of status hops, or None if unreachable."""
+    cur = (current or "").upper()
+    tgt = (target or "").upper()
+    if cur == tgt:
+        return []
+    seen, queue = {cur}, [(cur, [])]
+    while queue:
+        node, path = queue.pop(0)
+        for nxt in sorted(STATUS_EDGES.get(node, ())):
+            if nxt in seen:
+                continue
+            if nxt == tgt:
+                return path + [nxt]
+            seen.add(nxt)
+            queue.append((nxt, path + [nxt]))
+    return None
 
 KIND_ORDER = ["policy", "standard"]   # reverse of creation order for teardown
 
@@ -146,15 +179,21 @@ class PolicyProvisioner:
     def cde_token(self) -> str:
         if self._cde_token:
             return self._cde_token
-        legacy = self.c.s.access_token
+        # Same legacy credential the catalog APIs use — either pasted as
+        # ALATION_ACCESS_TOKEN or minted from ALATION_REFRESH_TOKEN. Ask the
+        # client rather than reading the setting, or a configured refresh token
+        # looks like no credential at all.
+        legacy = self.c.catalog_token()
         if not legacy:
             raise RuntimeError(
-                "CDE standards need ALATION_ACCESS_TOKEN (a legacy API token) in "
-                ".env — the CDE service does not accept the OAuth bearer. Policies "
-                "work without it; use --only policy to skip standards."
+                "CDE standards need a legacy API token — the CDE service does not "
+                "accept the OAuth bearer. Set ALATION_REFRESH_TOKEN and "
+                "ALATION_USER_ID (or ALATION_ACCESS_TOKEN) in .env. Policies work "
+                "without it; use --only policy to skip standards."
             )
+        # Docs write this header uppercase; HTTP is case-insensitive but match them.
         resp = self.c.request("POST", CDE_AUTH, None,
-                              extra_headers={"Token": legacy})
+                              extra_headers={"TOKEN": legacy})
         tok = resp if isinstance(resp, str) else (
             resp.get("token") or resp.get("access_token"))
         if not tok:
@@ -318,23 +357,52 @@ class PolicyProvisioner:
             log.append(f"  = standard {name} (already ours)")
             return self.state.id_for("standard", s["ref"])
 
+        # Schema verified against the CDE OpenAPI spec (StandardCreationRequest,
+        # CDE 2026.4.0-0). Required: name, purpose, scope, derived_requirements.
+        # A field's allowed values live under `allowed_values` — `accepted_values`
+        # was our invention and is what the 400 was rejecting.
+        #
+        # `sources` is optional in OpenAPI but a Template Overlay standard is
+        # documented as deriving FROM a policy, and the whole point here is the
+        # BCBS 239 traceability, so always send it. source_key is the documented
+        # alation:// URN form.
         body = _clean({
             "name": name,
             "purpose": s.get("purpose"),
             "scope": s.get("scope"),
             "derived_requirements": s.get("derived_requirements"),
+            "sources": [{
+                "id": int(src_id),
+                "name": name,
+                "source_key": f"alation://business_policy/{src_id}",
+            }],
             "options": {"allow_duplicates": False},
         })
         try:
             resp = self.c.post(STANDARDS, json_body=body,
                                extra_headers={"CDEToken": self.cde_token()})
         except (AlationError, RuntimeError) as err:
-            log.append(f"  ! standard {name}: {str(err)[:160]}")
+            # Do NOT truncate a structural rejection. The CDE service names the
+            # exact sub-object it dislikes, and clipping it to 160 chars throws
+            # away the only part that says why.
+            detail = getattr(err, "body", None)
+            log.append(f"  ! standard {name} rejected:")
+            log.append(f"      {json.dumps(detail, default=str, indent=6)}"
+                       if detail is not None else f"      {err}")
+            log.append(f"      request body we sent:")
+            log.append(f"      {json.dumps(body, default=str)[:2000]}")
             return None
 
+        # StandardResponse carries BOTH `id` (int primary key) and `key` (UUID).
+        # /standard/{id}/ takes the integer, so prefer it — recording the UUID
+        # would give us a teardown that cannot delete.
         sid = None
         if isinstance(resp, dict):
-            sid = resp.get("id") or resp.get("key")
+            sid = resp.get("id")
+            if sid is None and resp.get("key"):
+                log.append(f"      ! no integer id returned, falling back to key "
+                           f"{resp['key']} — delete by id may not work")
+                sid = resp["key"]
         if sid:
             self.state.record("standard", s["ref"], str(sid), name,
                               source_policy_id=src_id)
@@ -344,22 +412,242 @@ class PolicyProvisioner:
         return sid
 
     def _await_job(self, task_id: Any, log: list[str],
-                   attempts: int = 15, wait: float = 2.0) -> str | None:
-        """Poll the bulk job. Note the path is /api/v1/, not /integration/."""
+                   attempts: int = 60, wait: float = 2.0) -> str | None:
+        """Poll the bulk job to a terminal state.
+
+        Giving up early is worse than waiting: the id-recovery search that
+        follows only finds the object once the job has actually committed it, so
+        a premature "continuing" produces a spurious "created but id could not
+        be recovered" — and an unrecorded object is one teardown cannot remove.
+        Two minutes of patience beats a bad state file.
+        """
+        last = None
         for _ in range(attempts):
             try:
                 resp = self.c.get(f"{JOB}?id={task_id}")
-            except (AlationError, RuntimeError):
+            except (AlationError, RuntimeError) as err:
+                log.append(f"    (job {task_id} status unreadable: {str(err)[:120]})")
                 return None
             if isinstance(resp, list) and resp:
                 resp = resp[0]
-            status = str((resp or {}).get("status") or "").lower()
+            last = resp or {}
+            status = str(last.get("status") or "").lower()
             if status in ("successful", "partially_successful", "failed"):
+                if status != "successful":
+                    # The job body carries per-row errors; without them a
+                    # partial success is indistinguishable from a full one.
+                    detail = last.get("result") or last.get("msg") or last
+                    log.append(f"    (job {task_id} {status}: "
+                               f"{json.dumps(detail, default=str)[:300]})")
                 return status
             time.sleep(wait)
-        log.append(f"    (job {task_id} still running after "
-                   f"{attempts * wait:.0f}s; continuing)")
+        log.append(f"    (job {task_id} STILL not terminal after "
+                   f"{attempts * wait:.0f}s — last status "
+                   f"{str((last or {}).get('status'))!r}. Anything it creates "
+                   f"after this point will be un-recorded.)")
         return None
+
+    def dump_standards(self) -> Any:
+        """Return existing overlay standards verbatim.
+
+        Written because our `derived_requirements` shape was invented from the
+        policy design doc, not from the API. When the service says "Invalid
+        structure", an existing object is the cheapest authoritative schema.
+        """
+        return self.c.get(f"{STANDARDS}?limit=50",
+                          extra_headers={"CDEToken": self.cde_token()})
+
+    # -- verify ------------------------------------------------------------
+    def verify(self, spec: dict) -> tuple[list[str], bool]:
+        """Read every recorded id back and confirm it is the object we think.
+
+        This is the guard `destroy` depends on. Ids are recovered by searching a
+        title, so a title collision, a rename, or a mis-parsed job response
+        could bind a ref to someone else's object — and teardown deletes by
+        recorded id without re-checking. Cheap to run, catastrophic to skip.
+
+        Also reports spec'd policies with no record at all: those may exist
+        un-recorded in the instance, which teardown will silently leave behind.
+        """
+        log: list[str] = []
+        ok = True
+
+        by_id = {str(p.get("id")): p for p in self._list_policies()}
+        recorded_refs = set()
+
+        for rec in self.state.teardown_order(KIND_ORDER):
+            if rec["kind"] != "policy":
+                continue
+            recorded_refs.add(rec["ref"])
+            rid, want = str(rec["id"]), (rec.get("name") or "")
+            actual = by_id.get(rid)
+            if actual is None:
+                log.append(f"  ! policy {want!r} recorded as id={rid}, but no "
+                           f"policy with that id exists. Stale state — teardown "
+                           f"would delete nothing, or worse, a recycled id.")
+                ok = False
+                continue
+            got = (actual.get("title") or "").strip()
+            if got.strip().lower() != want.strip().lower():
+                log.append(f"  ! MISMATCH id={rid}: recorded as {want!r} but the "
+                           f"instance calls it {got!r}. DO NOT run destroy — it "
+                           f"would delete the wrong object.")
+                ok = False
+            else:
+                log.append(f"  = policy id={rid} {got!r} verified")
+
+        # Standards live on the CDE service, so they need their own read-back.
+        # Leaving them unverified would mean half the state file is trusted
+        # rather than checked — and standards are deleted by recorded id too.
+        std_recs = [r for r in self.state.teardown_order(KIND_ORDER)
+                    if r["kind"] == "standard"]
+        if std_recs:
+            try:
+                token = self.cde_token()
+            except (AlationError, RuntimeError) as err:
+                log.append(f"  ? {len(std_recs)} standard(s) recorded but the CDE "
+                           f"service is unreachable, so they are UNVERIFIED: "
+                           f"{str(err)[:120]}")
+                ok = False
+                token = None
+            if token:
+                for rec in std_recs:
+                    rid, want = rec["id"], (rec.get("name") or "")
+                    try:
+                        got = self.c.get(f"{STANDARDS}{rid}/",
+                                         extra_headers={"CDEToken": token})
+                    except (AlationError, RuntimeError) as err:
+                        log.append(f"  ! standard {want!r} recorded as id={rid} "
+                                   f"but reading it back failed: {str(err)[:120]}")
+                        ok = False
+                        continue
+                    actual = (got or {}).get("name") or ""
+                    status = (got or {}).get("status")
+                    if actual.strip().lower() != want.strip().lower():
+                        log.append(f"  ! MISMATCH standard id={rid}: recorded as "
+                                   f"{want!r} but instance calls it {actual!r}. "
+                                   f"DO NOT run destroy.")
+                        ok = False
+                    else:
+                        note = ""
+                        if str(status).upper() != "PUBLISHED":
+                            note = (f"  <- status {status}; CDM only applies "
+                                    f"PUBLISHED versions, so this is not yet "
+                                    f"attachable to CDEs")
+                        log.append(f"  = standard id={rid} {actual!r} verified"
+                                   f"{note}")
+
+        for p in spec.get("policies") or []:
+            if p["ref"] in recorded_refs:
+                continue
+            name = self.prefixed(p["title"])
+            found = self.find_policy(name)
+            if found:
+                log.append(f"  ! policy {name!r} EXISTS in the instance "
+                           f"(id={found.get('id')}) but is not recorded. Teardown "
+                           f"will leave it behind; delete it in the UI, or re-run "
+                           f"apply after removing it.")
+                ok = False
+            else:
+                log.append(f"  - policy {name!r} not created yet")
+        return log, ok
+
+    # -- publish -----------------------------------------------------------
+    def publish(self, new_status: str = "PUBLISHED", comment: str = "",
+                dry_run: bool = True) -> tuple[list[str], bool]:
+        """Transition recorded standards out of DRAFT.
+
+        Schema verified from the CDE OpenAPI spec (`StandardStatusChangeRequest`):
+        `POST /cde-service/integration/standard/{id}/status/` with
+        `{new_status, comment}`. The settable values are DRAFT,
+        PENDING_APPROVAL and PUBLISHED — note IN_REVIEW appears in PolicyStatus
+        but is NOT settable here, so it is reached by the workflow, not by us.
+
+        Whether DRAFT -> PUBLISHED is permitted in one hop depends on the
+        instance's approval rules and whether the caller is a Global Standards
+        Approver. A 403 here is a role problem, not a payload problem, and the
+        honest fallback is PENDING_APPROVAL — which is arguably the truthful
+        demo anyway, since no bank auto-publishes a governance standard.
+        """
+        allowed = {"DRAFT", "PENDING_APPROVAL", "PUBLISHED"}
+        new_status = (new_status or "").upper()
+        if new_status not in allowed:
+            return ([f"  ! {new_status!r} is not settable. Choose one of "
+                     f"{sorted(allowed)} — IN_REVIEW is reached via the approval "
+                     f"workflow, not by this call."], False)
+
+        log: list[str] = []
+        ok = True
+        recs = [r for r in self.state.teardown_order(KIND_ORDER)
+                if r["kind"] == "standard"]
+        if not recs:
+            return (["  nothing recorded — no standards to publish"], True)
+
+        try:
+            token = self.cde_token()
+        except (AlationError, RuntimeError) as err:
+            return ([f"  ! CDE service unavailable: {str(err)[:200]}"], False)
+
+        for rec in recs:
+            rid, name = rec["id"], rec.get("name") or ""
+            try:
+                current = (self.c.get(f"{STANDARDS}{rid}/",
+                                      extra_headers={"CDEToken": token})
+                           or {}).get("status")
+            except (AlationError, RuntimeError) as err:
+                log.append(f"  ! standard id={rid} unreadable: {str(err)[:120]}")
+                ok = False
+                continue
+
+            hops = status_path(str(current), new_status)
+            if hops is None:
+                log.append(f"  ! standard id={rid} {name!r}: no legal path from "
+                           f"{current} to {new_status}")
+                ok = False
+                continue
+            if not hops:
+                log.append(f"  = standard id={rid} {name!r} already {new_status}")
+                continue
+            if dry_run:
+                log.append(f"  ~ standard id={rid} {name!r}: "
+                           f"{' -> '.join([str(current)] + hops)}")
+                continue
+
+            for hop in hops:
+                try:
+                    self.c.post(f"{STANDARDS}{rid}/status/",
+                                json_body={"new_status": hop, "comment": comment},
+                                extra_headers={"CDEToken": token})
+                except (AlationError, RuntimeError) as err:
+                    body = getattr(err, "body", None)
+                    log.append(f"  ! standard id={rid} {name!r}: hop -> {hop} refused")
+                    log.append(f"      {json.dumps(body, default=str) if body is not None else err}")
+                    if getattr(err, "status", None) == 403:
+                        log.append("      403 = role, not payload. Approving needs "
+                                   "Global Standards Approver. The standard is left "
+                                   "at its previous status, which is a legitimate "
+                                   "end state — a bank approves standards, it does "
+                                   "not auto-publish them.")
+                    ok = False
+                    break
+
+                # Read back after EVERY hop: the approval workflow can divert a
+                # transition (e.g. into IN_REVIEW), and continuing to the next
+                # hop from an assumed state would compound the error.
+                try:
+                    now = (self.c.get(f"{STANDARDS}{rid}/",
+                                      extra_headers={"CDEToken": token})
+                           or {}).get("status")
+                except (AlationError, RuntimeError):
+                    now = "unreadable"
+                if str(now).upper() != hop:
+                    log.append(f"  ! standard id={rid} {name!r}: asked for {hop}, "
+                               f"instance reports {now!r} — the approval workflow "
+                               f"intervened. Stopping rather than guessing.")
+                    ok = False
+                    break
+                log.append(f"  + standard id={rid} {name!r} -> {now}")
+        return log, ok
 
     # -- destroy -----------------------------------------------------------
     def destroy(self, dry_run: bool = True) -> list[str]:

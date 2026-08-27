@@ -12,7 +12,7 @@ from typing import Any
 
 import requests
 
-from .auth import Settings, TokenProvider
+from .auth import CatalogTokenProvider, Settings, TokenProvider
 
 AI_V1 = "/ai/api/v1"
 
@@ -29,6 +29,7 @@ class AlationClient:
     def __init__(self, settings: Settings | None = None):
         self.s = settings or Settings.from_env()
         self._tokens = TokenProvider(self.s)
+        self._catalog_tokens = CatalogTokenProvider(self.s)
         self._session = requests.Session()
         self._session.verify = self.s.verify_ssl
 
@@ -39,12 +40,21 @@ class AlationClient:
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
-        # Agent Studio (/ai/api/v1) speaks OAuth bearer. The catalog APIs
-        # (/integration/...) historically expect the legacy `TOKEN` header, so
-        # send both when we have a legacy token and are calling the catalog —
-        # harmless where the bearer is accepted, and necessary where it isn't.
-        if path.startswith("/integration/") and self.s.access_token:
-            h["TOKEN"] = self.s.access_token
+        # The OAuth bearer works on /integration/v1/ too — verified 2026-08-27
+        # against policy_group. So do NOT routinely add the legacy `TOKEN`
+        # header: sending a TOKEN makes Alation authenticate as that token's
+        # user instead of the bearer's, and a wrong or under-privileged one
+        # turns a working request into 403 "credentials were not provided".
+        # Belt-and-braces here was actively harmful.
+        #
+        # The legacy token is still needed for the CDE service, which bootstraps
+        # its own CDEToken from it — see client.catalog_token(). And OAuth
+        # clients are documented as Alation Cloud Service only, so on-prem
+        # instances have no bearer at all; those set ALATION_FORCE_CATALOG_TOKEN.
+        if path.startswith("/integration/") and self.s.force_catalog_token:
+            tok = self._catalog_tokens.token()
+            if tok:
+                h["TOKEN"] = tok
         if extra:
             h.update(extra)
         return h
@@ -94,6 +104,31 @@ class AlationClient:
                 f"HTML response, not JSON ({len(payload)} bytes) — {hint}",
             )
 
+        # This 403 is a liar. On this instance it has meant, in order of
+        # observed likelihood: (1) the underlying FEATURE is disabled -- Policy
+        # Center off produced exactly this body on a path that worked minutes
+        # later once enabled; (2) a `TOKEN` header was sent whose user lacks the
+        # role, which overrides the bearer; (3) the bearer's OAuth client role
+        # is insufficient. Do not read it as "no credentials were sent".
+        if resp.status_code == 403 and path.startswith("/integration/"):
+            sent_token = "TOKEN" in self._headers(extra_headers, path=path)
+            raise AlationError(
+                method, url, 403,
+                f"{payload} -- NOTE: this message is misleading. Check, in order: "
+                f"(1) is the underlying feature enabled in Admin Settings "
+                f"(e.g. Policy Center for policy endpoints)? (2) "
+                + (
+                    "a legacy TOKEN header WAS sent, which authenticates as that "
+                    "token's user instead of the OAuth client -- if "
+                    "ALATION_USER_ID is wrong or that user lacks the role you get "
+                    "this 403. Unset ALATION_FORCE_CATALOG_TOKEN to use the "
+                    "bearer alone."
+                    if sent_token else
+                    "no TOKEN header was sent, so this is the OAuth client's own "
+                    "role -- does it have the required catalog role?"
+                ),
+            )
+
         if not resp.ok:
             raise AlationError(method, url, resp.status_code, payload)
         return payload
@@ -132,6 +167,16 @@ class AlationClient:
             yield from resp.iter_lines(decode_unicode=True)
 
     # -- convenience -------------------------------------------------------
+    def catalog_token(self) -> str | None:
+        """The legacy API access token, minted from the refresh token if needed.
+
+        Exposed because the CDE service sits on a third path prefix
+        (`/cde-service/`) and bootstraps its own `CDEToken` from this one, so it
+        must ask for the token explicitly rather than relying on `_headers`.
+        Returns None when no credential is configured.
+        """
+        return self._catalog_tokens.token()
+
     def get(self, path: str, **kw) -> Any:
         return self.request("GET", path, **kw)
 

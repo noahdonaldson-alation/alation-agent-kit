@@ -1,6 +1,8 @@
 """agentkit CLI.
 
-    agentkit whoami                        # verify auth and token cache
+    agentkit whoami                        # probe all three auth surfaces
+    agentkit refresh-token <username>      # mint a refresh token + user_id
+    agentkit userid <email>                # find the numeric ALATION_USER_ID
     agentkit list agents|tools|llms [--raw]
     agentkit export <agent-name> [-o agents/foo.json]
     agentkit deploy agents/foo.json [--prompt <prompt-stem>] [--dry-run]
@@ -33,8 +35,73 @@ def cmd_whoami(args) -> int:
     print(f"Instance: {s.base_url}")
     print(f"Client ID: {s.client_id[:8]}…")
     print(f"Token cache: {s.token_cache or 'disabled'}")
+
     agents = AgentStudio(client).list_agents()
-    print(f"Auth OK — {len(agents)} agent config(s) visible")
+    print(f"Agent Studio (OAuth bearer): OK — {len(agents)} agent config(s) visible")
+
+    # The catalog APIs are a separate auth surface, and the policy provider
+    # needs them. Probe rather than assume: a green Agent Studio check says
+    # nothing about whether /integration/v1/ will answer.
+    print("\nCatalog APIs (/integration/v1/):")
+    if s.force_catalog_token:
+        if s.access_token:
+            cred = "legacy TOKEN header from ALATION_ACCESS_TOKEN (pasted)"
+        elif s.refresh_token and s.user_id:
+            cred = f"legacy TOKEN header, minted for user_id {s.user_id}"
+        else:
+            print("  ALATION_FORCE_CATALOG_TOKEN is on but no legacy credential is set.")
+            return 1
+        print(f"  Credential: {cred}")
+        print("  NOTE: this overrides the OAuth bearer. If this 403s, try unsetting")
+        print("  ALATION_FORCE_CATALOG_TOKEN — the bearer works here on cloud instances.")
+    else:
+        print("  Credential: OAuth bearer (the same one Agent Studio uses)")
+
+    try:
+        groups = client.get("/integration/v1/policy_group/", params={"limit": 1})
+        n = len(groups) if isinstance(groups, list) else "?"
+        print(f"  Probe GET /integration/v1/policy_group/: OK ({n} row(s) returned)")
+    except Exception as exc:  # surfaced verbatim; the message is the diagnosis
+        print(f"  Probe FAILED: {exc}")
+        return 1
+
+    # The CDE service is a third auth surface and the one that actually needs
+    # the legacy token, to bootstrap its CDEToken. Report it separately so a
+    # green catalog check is not mistaken for standards being deployable.
+    print("\nCDE service (/cde-service/, CDEToken header):")
+
+    # Diagnose before minting: "Refresh token provided is invalid" covers
+    # expired, revoked, wrong user_id, and never-was-a-refresh-token. Guessing
+    # between those has already cost us two wrong fixes.
+    from .auth import CatalogTokenProvider
+    d = CatalogTokenProvider(s).diagnose()
+    print(f"  ALATION_REFRESH_TOKEN: {d['fingerprint']}")
+    print(f"  ALATION_USER_ID: {s.user_id}")
+    print(f"  Mint access token: {'OK' if d['ok'] else d['status']}")
+    if not d["ok"]:
+        print(f"  Detail: {d['detail']}")
+        print("  -> Compare the length above with the token you pasted. A refresh")
+        print("     token from this instance is ~86 chars; a 43-char value is an")
+        print("     ACCESS token in the wrong slot. If it does not match what you")
+        print("     pasted, .env did not save, or a duplicate")
+        print("     ALATION_REFRESH_TOKEN line further down is winning.")
+        print("     Mint a fresh pair with: ./run.sh refresh-token <username>")
+        return 1
+    print(f"  Access token expires: {d['detail'].get('token_expires_at')}")
+
+    tok = client.catalog_token()
+    if not tok:
+        print("  Credential: NONE — needs ALATION_ACCESS_TOKEN, or")
+        print("  ALATION_REFRESH_TOKEN + numeric ALATION_USER_ID. Only overlay")
+        print("  standards need this; policies deploy without it.")
+        return 0
+    print(f"  Credential: legacy API token ({len(tok)} chars)")
+    from .policies import PolicyProvisioner
+    from .state import DeploymentState
+    ok, why = PolicyProvisioner(
+        client, DeploymentState(instance=s.base_url)
+    ).verify_standards_api()
+    print(f"  Standards API: {'OK' if ok else 'UNAVAILABLE — ' + why}")
     return 0
 
 
@@ -198,7 +265,40 @@ def cmd_policy(args) -> int:
         for line in prov.apply(spec, only=only):
             print(line)
         print(f"\nState: {state.path} now records {len(state)} object(s)")
+
+        # Verify immediately rather than trusting the write. Ids are recovered
+        # by title search, so this is the only thing standing between a bad
+        # recovery and destroy deleting someone else's policy.
+        print("\nVerifying recorded ids against the instance:")
+        log, ok = prov.verify(spec)
+        for line in log:
+            print(line)
+        if not ok:
+            print("\nDo not run destroy until the above is resolved.")
+        return 0 if ok else 1
+
+    if args.action == "publish":
+        log, ok = prov.publish(new_status=args.status, comment=args.comment,
+                               dry_run=not args.yes)
+        for line in log:
+            print(line)
+        if not args.yes:
+            print("\nDry run. Re-run with --yes to change status.")
+        return 0 if ok else 1
+
+    if args.action == "standards":
+        print(json.dumps(prov.dump_standards(), indent=2, default=str))
         return 0
+
+    if args.action == "verify":
+        log, ok = prov.verify(spec)
+        for line in log:
+            print(line)
+        print("\nVerified: every recorded id still matches its object."
+              if ok else
+              "\nPROBLEMS FOUND above. Resolve them before running destroy —"
+              "\ndestroy deletes by recorded id and does not re-check titles.")
+        return 0 if ok else 1
 
     if args.action == "destroy":
         log = prov.destroy(dry_run=not args.yes)
@@ -211,6 +311,88 @@ def cmd_policy(args) -> int:
         return 0
 
     return 1
+
+
+def cmd_userid(args) -> int:
+    """Look up a numeric Alation user id via the bearer-authenticated User API.
+
+    Exists because ALATION_USER_ID has to be exact and there is no documented
+    "who am I" endpoint — guessing it (we tried 1) mints a token for the wrong
+    user, and Alation then rejects the refresh-token/user-id pair as if the
+    token itself were bad.
+    """
+    client = AlationClient(Settings.from_env())
+    email = args.email.strip().lower()
+
+    # Server-side filter first; fall back to paging, since the filter parameter
+    # is undocumented and may simply be ignored (which would silently return
+    # page one and look like a miss).
+    try:
+        rows = client.get("/integration/v1/user/", params={"email": email})
+        if isinstance(rows, list):
+            for u in rows:
+                if str(u.get("email", "")).lower() == email:
+                    print(f"{u['id']}\t{u.get('email')}\t{u.get('display_name') or ''}")
+                    print("\nPut that number in ALATION_USER_ID.")
+                    return 0
+    except Exception as exc:  # noqa: BLE001
+        print(f"Filtered lookup failed ({exc}); paging instead.")
+
+    seen = 0
+    for skip in range(0, args.max_scan, 100):
+        try:
+            rows = client.get("/integration/v1/user/",
+                              params={"limit": 100, "skip": skip})
+        except Exception as exc:  # noqa: BLE001
+            print(f"User API unavailable: {exc}")
+            print("\nThe User API is Server-Admin-scoped. If your OAuth client "
+                  "lacks that role, read the id from the URL of your own profile "
+                  "page in the Alation UI instead.")
+            return 1
+        if not isinstance(rows, list) or not rows:
+            break
+        seen += len(rows)
+        for u in rows:
+            if str(u.get("email", "")).lower() == email:
+                print(f"{u['id']}\t{u.get('email')}\t{u.get('display_name') or ''}")
+                print("\nPut that number in ALATION_USER_ID.")
+                return 0
+
+    print(f"No user matched {email} in {seen} record(s) scanned.")
+    print("Raise --max-scan, or read the id from your profile page URL.")
+    return 1
+
+
+def cmd_refresh_token(args) -> int:
+    """Mint a refresh token and print it plus the numeric user_id.
+
+    Removes two failure modes we hit by hand: pasting the wrong value into
+    ALATION_REFRESH_TOKEN, and guessing ALATION_USER_ID.
+    """
+    import getpass
+
+    from .auth import create_refresh_token
+
+    s = Settings.from_env()
+    password = args.password or getpass.getpass(f"Alation password for {args.username}: ")
+    print("\nNOTE: this revokes any previous refresh token for this user.\n")
+    try:
+        body = create_refresh_token(s.base_url, args.username, password,
+                                    name=args.name, verify_ssl=s.verify_ssl)
+    except RuntimeError as exc:
+        print(exc)
+        return 1
+
+    tok, uid = body.get("refresh_token"), body.get("user_id")
+    print(f"refresh_token : {tok}")
+    print(f"user_id       : {uid}")
+    print(f"expires       : {body.get('token_expires_at')}")
+    print(f"status        : {body.get('token_status')}")
+    print("\nPut these in .env (replace any existing values):")
+    print(f"  ALATION_REFRESH_TOKEN={tok}")
+    print(f"  ALATION_USER_ID={uid}")
+    print("\nThen: ./run.sh whoami")
+    return 0
 
 
 def cmd_prompts(args) -> int:
@@ -227,6 +409,18 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("whoami").set_defaults(func=cmd_whoami)
+
+    prt = sub.add_parser("refresh-token",
+                         help="Mint a refresh token + learn your numeric user id")
+    prt.add_argument("username")
+    prt.add_argument("--password", help="Omit to be prompted (does not hit shell history)")
+    prt.add_argument("--name", default="alation-agent-kit")
+    prt.set_defaults(func=cmd_refresh_token)
+
+    pu = sub.add_parser("userid", help="Find the numeric user id for an email")
+    pu.add_argument("email")
+    pu.add_argument("--max-scan", type=int, default=2000)
+    pu.set_defaults(func=cmd_userid)
 
     pl = sub.add_parser("list")
     pl.add_argument("kind", choices=["agents", "tools", "llms"])
@@ -261,7 +455,9 @@ def build_parser() -> argparse.ArgumentParser:
     pr.set_defaults(func=cmd_run)
 
     pp = sub.add_parser("policy", help="Provision policy groups, policies, standards")
-    pp.add_argument("action", choices=["plan", "apply", "destroy"])
+    pp.add_argument("action",
+                choices=["plan", "apply", "verify", "standards",
+                         "publish", "destroy"])
     pp.add_argument("spec", nargs="?", default="policies/bcbs239.json")
     pp.add_argument("--prefix", default=None,
                     help="Namespace prefix for created objects, e.g. 'BCBS239 - '. "
@@ -271,6 +467,11 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--only", help="Comma-separated kinds: policy_group,policy,standard")
     pp.add_argument("--yes", action="store_true",
                     help="Actually write. Without it, apply and destroy only report.")
+    pp.add_argument("--status", default="PUBLISHED",
+                    choices=["DRAFT", "PENDING_APPROVAL", "PUBLISHED"],
+                    help="Target status for `policy publish`")
+    pp.add_argument("--comment", default="",
+                    help="Optional comment recorded with a status change")
     pp.set_defaults(func=cmd_policy)
 
     sub.add_parser("prompts").set_defaults(func=cmd_prompts)

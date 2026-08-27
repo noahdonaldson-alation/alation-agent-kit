@@ -85,7 +85,7 @@
             {
               "name": "Single authoritative source identified",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Yes",
                 "No",
                 "In progress"
@@ -104,7 +104,7 @@
             {
               "name": "Uses enterprise-standard identifier",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Yes",
                 "Local identifier only",
                 "Not applicable"
@@ -131,7 +131,7 @@
             {
               "name": "Reconciled to system of record",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Yes - automated",
                 "Yes - manual",
                 "No"
@@ -140,7 +140,7 @@
             {
               "name": "Reconciliation frequency",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Intraday",
                 "Daily",
                 "Weekly",
@@ -161,7 +161,7 @@
             {
               "name": "Accuracy monitoring in place",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Yes",
                 "No",
                 "Planned"
@@ -180,7 +180,7 @@
             {
               "name": "Manual or EUC intervention in the flow",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "None",
                 "Documented",
                 "Undocumented"
@@ -207,7 +207,7 @@
             {
               "name": "Completeness measured and monitored",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Yes",
                 "No",
                 "Planned"
@@ -230,7 +230,7 @@
             {
               "name": "Materiality of exclusions assessed",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Yes",
                 "No",
                 "No exclusions"
@@ -239,7 +239,7 @@
             {
               "name": "Covers off-balance-sheet exposures",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Yes",
                 "No",
                 "Not applicable"
@@ -262,7 +262,7 @@
             {
               "name": "Availability SLA defined",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Yes",
                 "No"
               ]
@@ -280,7 +280,7 @@
             {
               "name": "Meets SLA under stress conditions",
               "type": "picker",
-              "accepted_values": [
+              "allowed_values": [
                 "Tested - passes",
                 "Tested - fails",
                 "Not tested"
