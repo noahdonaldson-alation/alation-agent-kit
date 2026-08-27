@@ -195,15 +195,25 @@ def main() -> int:
 
         errs = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
         struct = structural_checks(doc)
-        n_cde = len(doc.get("cde_candidates") or [])
-        n_xdq = len(doc.get("cross_cutting_dq") or [])
+
+        # Describe whichever contract this document is, not whichever one the
+        # register happens to use.
+        if "mappings" in doc:
+            counts = Counter(m.get("status") for m in doc["mappings"])
+            summary = (f"{len(doc['mappings'])} mappings "
+                       f"({counts.get('mapped', 0)} mapped, "
+                       f"{counts.get('partial', 0)} partial, "
+                       f"{counts.get('not_found', 0)} not found)")
+        else:
+            summary = (f"{len(doc.get('cde_candidates') or [])} CDEs, "
+                       f"{len(doc.get('cross_cutting_dq') or [])} cross-cutting")
 
         if not errs and not struct:
-            print(f"  {p.name:16} OK    {n_cde} CDEs, {n_xdq} cross-cutting")
+            print(f"  {p.name:26} OK    {summary}")
             continue
 
         failures += 1
-        print(f"  {p.name:16} FAIL  {n_cde} CDEs, {n_xdq} cross-cutting")
+        print(f"  {p.name:26} FAIL  {summary}")
         for e in errs[:6]:
             loc = "/".join(str(x) for x in e.path) or "(root)"
             print(f"        schema: {loc}: {e.message[:110]}")
