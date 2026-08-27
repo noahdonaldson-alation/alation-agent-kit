@@ -5,6 +5,7 @@ Reviews and curated evidence for the prompts in this repo.
 | Path | What it is |
 |---|---|
 | **`prompt-iteration.md`** | **How prompt improvement is tracked** — the measure/change/re-measure loop, what to record, and the traps that produced wrong conclusions. Read this before revising any prompt. |
+| **`bcbs239-gap-findings.md`** | **The first end-to-end pipeline result** — what the gap analysis found in a real warehouse, why it makes a better demo opening than a list of proposals, and a before/after showing output tracking catalogue maturity |
 | `bcbs239-interpretation-review.md` | Review of the `bcbs239_cde_dq_interpreter` output — citation verification, strengths, weaknesses, and the run-to-run drift findings that drove each prompt revision |
 | `runs/<prompt-version>/` | Curated agent outputs kept as evidence, **one directory per prompt version** |
 

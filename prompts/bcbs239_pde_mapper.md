@@ -71,6 +71,14 @@ ten narrow ones.
    equivalent", no two elements joined with "vs.". If you found the table but not
    the column, you do not yet have a monitorable element.
 
+   **`candidates` is the complete list of elements this mapping references.** If
+   you decide to monitor an element, it belongs in `candidates` too — with its
+   own `why_matched` and `confidence` — even if you found it while looking for
+   something else. A completeness check on a key often belongs on the fact or
+   view side rather than the dimension table that first matched; that view is
+   then a candidate for this CDE, not an aside. A target that appears nowhere in
+   `candidates` leaves a reviewer no way to judge whether the element is real.
+
    When the requirement is clear but the target is not confirmed, record it as a
    blocker instead:
 

@@ -105,3 +105,21 @@ changelog:
       Expected: monitor count drops from 11 to near zero until column metadata
       is catalogued, with the requirements reappearing as named blockers. That is
       the correct answer for this instance, not a regression.
+    result: >
+      Superseded by events — MDE was re-run with column extraction before this
+      version was tested, so the prediction could not be checked as stated. With
+      columns indexed, monitors stayed at 11 but placeholder targets fell from 10
+      to 1, which is the same fix landing for a better reason.
+  - version: 0.3.0
+    date: 2026-08-24
+    note: >
+      One violation of the monitor/candidate rule survived v0.2.0: a completeness
+      monitor targeted vw_core_party_position_summary.PARTY_SK while CDE-01's
+      candidates were dim_party.PARTY_SK and cust_master_clean.CUST_NBR.
+      The reasoning was right — a completeness check on a counterparty key
+      belongs on the position/fact side, not the dimension table — but the view
+      was never recorded as a candidate, so a reviewer had no way to judge it.
+      Change: candidates is now defined as the COMPLETE list of elements a
+      mapping references. Anything you monitor belongs there, with its own
+      why_matched and confidence, even if found while looking for something else.
+      This closes the last structural failure rather than adding a new rule.
