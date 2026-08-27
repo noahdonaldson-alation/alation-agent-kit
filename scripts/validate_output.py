@@ -20,6 +20,7 @@ from collections import Counter
 from pathlib import Path
 
 DEFAULT_SCHEMA = "schemas/cde_dq_requirements.schema.json"
+MAPPING_SCHEMA = "schemas/pde_mapping.schema.json"
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -174,12 +175,32 @@ def register_checks(doc: dict) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Validate agent JSON output")
     ap.add_argument("files", nargs="+")
-    ap.add_argument("--schema", default=DEFAULT_SCHEMA)
+    ap.add_argument(
+        "--schema", default=None,
+        help=f"Schema to validate against. Default: auto-detect from the "
+             f"document's own keys, falling back to {DEFAULT_SCHEMA}. Auto-detect "
+             f"exists because defaulting to the interpreter's schema silently "
+             f"reported every mapper run as invalid — a false failure is worse "
+             f"than no check, because it teaches you to ignore the check.")
     args = ap.parse_args()
 
     import jsonschema
-    schema = json.loads(Path(args.schema).read_text())
-    validator = jsonschema.Draft202012Validator(schema)
+
+    # One validator per schema, built lazily: the two agents in this pipeline
+    # emit different contracts, and a run of mixed files is normal.
+    _cache: dict[str, "jsonschema.Draft202012Validator"] = {}
+
+    def validator_for(doc: dict) -> tuple[str, "jsonschema.Draft202012Validator"]:
+        if args.schema:
+            path = args.schema
+        elif isinstance(doc, dict) and "mappings" in doc:
+            path = MAPPING_SCHEMA
+        else:
+            path = DEFAULT_SCHEMA
+        if path not in _cache:
+            _cache[path] = jsonschema.Draft202012Validator(
+                json.loads(Path(path).read_text()))
+        return path, _cache[path]
 
     failures = 0
     for name in args.files:
@@ -193,6 +214,7 @@ def main() -> int:
             failures += 1
             continue
 
+        schema_path, validator = validator_for(doc)
         errs = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
         struct = structural_checks(doc)
 
@@ -216,7 +238,7 @@ def main() -> int:
         print(f"  {p.name:26} FAIL  {summary}")
         for e in errs[:6]:
             loc = "/".join(str(x) for x in e.path) or "(root)"
-            print(f"        schema: {loc}: {e.message[:110]}")
+            print(f"        schema[{Path(schema_path).name}]: {loc}: {e.message[:110]}")
         if len(errs) > 6:
             print(f"        schema: ... and {len(errs) - 6} more")
         for s in struct[:6]:
