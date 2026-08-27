@@ -6,6 +6,11 @@
 # Token cache (also lives in ~/.alation by default, but just in case)
 .token_cache.json
 
+# Deployment state records what we created in a CUSTOMER's catalog, by id.
+# Instance-specific and not shareable — but never delete it while a deployment
+# is live, or teardown loses track of what it made.
+.deployment-state*.json
+
 # Python
 .venv/
 venv/

@@ -145,6 +145,74 @@ def cmd_run(args) -> int:
     return 0
 
 
+def _provisioner(args):
+    from .policies import PolicyProvisioner
+    from .state import DeploymentState
+    s = Settings.from_env()
+    state = DeploymentState(args.state, instance=s.base_url)
+    prefix = args.prefix if args.prefix is not None else state.prefix
+    if args.prefix is not None:
+        state.set_prefix(args.prefix)
+    return PolicyProvisioner(AlationClient(s), state, prefix), state
+
+
+def cmd_policy(args) -> int:
+    """plan / apply / destroy over policy groups, policies and standards."""
+    spec = read_json(args.spec)
+    prov, state = _provisioner(args)
+
+    if args.action == "plan":
+        actions = prov.plan(spec)
+        print(f"Plan for {spec.get('regulation', {}).get('id', args.spec)} "
+              f"on {state.instance}")
+        print(f"Namespace prefix: {prov.prefix!r}" if prov.prefix
+              else "Namespace prefix: (none) — consider --prefix for a customer instance")
+        print()
+        for a in actions:
+            print(a)
+        creates = sum(1 for a in actions if a.verb == "create")
+        unsupported = [a for a in actions if a.verb == "unsupported"]
+        print(f"\n{creates} to create, "
+              f"{sum(1 for a in actions if a.verb == 'skip')} already present"
+              + (f", {len(unsupported)} unsupported" if unsupported else ""))
+        if unsupported:
+            print("\nUnsupported objects must be created in the UI and become a "
+                  "documented prerequisite.")
+        if creates:
+            print("\nNothing has been created. Re-run with `policy apply` to proceed.")
+        return 0
+
+    if args.action == "apply":
+        actions = prov.plan(spec)
+        creates = [a for a in actions if a.verb == "create"]
+        if not creates:
+            print("Nothing to create — everything in the spec is already present.")
+            return 0
+        if not args.yes:
+            print(f"About to create {len(creates)} object(s) in {state.instance}:")
+            for a in creates:
+                print(a)
+            print("\nRe-run with --yes to proceed. Nothing has been created.")
+            return 0
+        only = set(args.only.split(",")) if args.only else None
+        for line in prov.apply(spec, only=only):
+            print(line)
+        print(f"\nState: {state.path} now records {len(state)} object(s)")
+        return 0
+
+    if args.action == "destroy":
+        log = prov.destroy(dry_run=not args.yes)
+        for line in log:
+            print(line)
+        if not args.yes:
+            print("\nDry run. Re-run with --yes to delete.")
+            print("Only objects this kit recorded creating are ever deleted, "
+                  "by recorded ID — never matched by name.")
+        return 0
+
+    return 1
+
+
 def cmd_prompts(args) -> int:
     for name in list_prompts():
         p = load_prompt(name)
@@ -191,6 +259,19 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--poll", action="store_true",
                     help="Use the legacy /call + task-polling path (usually 404s on success)")
     pr.set_defaults(func=cmd_run)
+
+    pp = sub.add_parser("policy", help="Provision policy groups, policies, standards")
+    pp.add_argument("action", choices=["plan", "apply", "destroy"])
+    pp.add_argument("spec", nargs="?", default="policies/bcbs239.json")
+    pp.add_argument("--prefix", default=None,
+                    help="Namespace prefix for created objects, e.g. 'BCBS239 - '. "
+                         "Recorded in the state file and reused.")
+    pp.add_argument("--state", default=".deployment-state.json",
+                    help="Deployment state file. One per target instance.")
+    pp.add_argument("--only", help="Comma-separated kinds: policy_group,policy,standard")
+    pp.add_argument("--yes", action="store_true",
+                    help="Actually write. Without it, apply and destroy only report.")
+    pp.set_defaults(func=cmd_policy)
 
     sub.add_parser("prompts").set_defaults(func=cmd_prompts)
     return p

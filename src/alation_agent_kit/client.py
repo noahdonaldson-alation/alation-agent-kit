@@ -33,12 +33,18 @@ class AlationClient:
         self._session.verify = self.s.verify_ssl
 
     # -- plumbing ----------------------------------------------------------
-    def _headers(self, extra: dict | None = None) -> dict:
+    def _headers(self, extra: dict | None = None, path: str = "") -> dict:
         h = {
             "Authorization": f"Bearer {self._tokens.token()}",
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
+        # Agent Studio (/ai/api/v1) speaks OAuth bearer. The catalog APIs
+        # (/integration/...) historically expect the legacy `TOKEN` header, so
+        # send both when we have a legacy token and are calling the catalog —
+        # harmless where the bearer is accepted, and necessary where it isn't.
+        if path.startswith("/integration/") and self.s.access_token:
+            h["TOKEN"] = self.s.access_token
         if extra:
             h.update(extra)
         return h
@@ -59,7 +65,7 @@ class AlationClient:
             url,
             json=json_body,
             params=params,
-            headers=self._headers(extra_headers),
+            headers=self._headers(extra_headers, path=path),
             timeout=timeout,
         )
 
@@ -76,6 +82,18 @@ class AlationClient:
         except ValueError:
             payload = resp.text
 
+        # An HTML body means we reached a web page, not an API: usually a wrong
+        # path, or a login redirect because this endpoint does not accept the
+        # auth we sent. Dumping markup hides that, so say it plainly.
+        if isinstance(payload, str) and payload.lstrip()[:1] == "<":
+            hint = ("the path may be wrong, or this endpoint may not accept the "
+                    "OAuth bearer token — some /integration/ APIs expect the "
+                    "legacy `TOKEN` header instead")
+            raise AlationError(
+                method, url, resp.status_code,
+                f"HTML response, not JSON ({len(payload)} bytes) — {hint}",
+            )
+
         if not resp.ok:
             raise AlationError(method, url, resp.status_code, payload)
         return payload
@@ -90,13 +108,13 @@ class AlationClient:
         poll and looks like a failure.
         """
         url = f"{self.s.base_url}{path}"
-        headers = self._headers({"Accept": "text/event-stream"})
+        headers = self._headers({"Accept": "text/event-stream"}, path=path)
         with self._session.post(
             url, json=json_body, headers=headers, timeout=timeout, stream=True
         ) as resp:
             if resp.status_code == 401:
                 self._tokens.token(force_refresh=True)
-                headers = self._headers({"Accept": "text/event-stream"})
+                headers = self._headers({"Accept": "text/event-stream"}, path=path)
                 with self._session.post(
                     url, json=json_body, headers=headers, timeout=timeout, stream=True
                 ) as retry:
