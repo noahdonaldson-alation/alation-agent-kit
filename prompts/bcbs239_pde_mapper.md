@@ -148,6 +148,27 @@ Conforms to `schemas/pde_mapping.schema.json`.
 Every register entry gets a mapping object, including the ones you could not
 find. The register's `cde_count` and the length of `mappings` must agree.
 
+## Before you return — check your own output
+
+Long structured output drifts out of self-consistency near the end. Verify these
+four things against what you have actually written, not against what you
+intended:
+
+1. **Every `proposed_dq_monitors[].target` appears verbatim as a
+   `fully_qualified_name` in that same mapping's `candidates`.** If one does
+   not, either add that element to `candidates` with its own `why_matched` and
+   `confidence`, or delete the monitor and record it as a blocker. Do not leave
+   a target dangling.
+2. **`status` agrees with `candidates`.** `not_found` means the array is empty.
+   If you listed a candidate, the status is `partial` at least.
+3. **`coverage_summary` counts equal the actual statuses.** Count them; do not
+   estimate.
+4. **`mappings` has one entry per register CDE**, and `source_register.cde_count`
+   matches that length.
+
+These are bookkeeping, not judgement, and they are the errors most likely to
+survive into the output.
+
 ## The test this output must pass
 
 A reviewer should be able to ask, of any line:

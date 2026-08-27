@@ -131,7 +131,10 @@
                   "description": "db.schema.table.column as reported by the catalog. Never invented."
                 },
                 "object_id": {
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "object_type": {
                   "type": "string",
@@ -144,7 +147,11 @@
                   ]
                 },
                 "data_type": {
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "As reported by the catalog, or null where no type is available"
                 },
                 "why_matched": {
                   "type": "string",
@@ -160,7 +167,10 @@
                   ]
                 },
                 "concerns": {
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               }
             }
