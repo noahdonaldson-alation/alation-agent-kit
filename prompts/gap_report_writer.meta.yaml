@@ -1,0 +1,172 @@
+name: gap_report_writer
+purpose: >
+  Renders the mapper's JSON gap analysis as a markdown report a data governance
+  lead can read. The final step of the Agent Studio Flow, so that what an SE
+  shows in the UI is a readable report rather than a wall of JSON.
+
+target_agent: gap_report_writer
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+
+output:
+  format: markdown
+  note: >
+    Markdown, not JSON, and deliberately so. The mapper keeps emitting JSON
+    because the next stage of the pipeline needs it to create CDEs and DQ
+    monitors. This step is a second PRESENTATION of the same artifact, not a
+    replacement — the Flow's Runs tab shows both: step 2's JSON and step 3's
+    report.
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  produced_by: bcbs239_pde_mapper
+  note: >
+    In a Flow this is a ReferenceInput into `message`, which the workflow spec
+    models as an ordinary agent message with no documented size cap. The ~10k
+    truncation people worry about belongs to the SQL Execution tool formatting
+    its own results, not to flow plumbing. Verify with
+    `agentkit workflow probe-payload` before trusting it at 40-56KB.
+
+agent_config:
+  mode: tool_call
+  tools: []
+  cost_note: >
+    No tools, so no ACU — only model tokens. Being catalog-blind is a safety
+    property, not a saving: a renderer that could search the catalog could add
+    findings the analysis never made, and a reader would have no way to tell
+    which facts came from the assessment.
+
+design_notes: >
+  Why a separate agent rather than changing the mapper to emit markdown: the
+  mapper's JSON is schema-validated, has a structural checker, and has comparison
+  tooling built around it (compare_mappings.py) — and it is what will drive CDE
+  and DQ monitor creation. Losing it to gain readability would trade a durable
+  artifact for a temporary one.
+
+  Why an agent rather than code: Flows have no transform node. `NodeType` is a
+  closed enum of start/agent/tool. In the terminal the same rendering should be
+  done by a script (render_report.py, currently unfinished) because code cannot
+  embellish.
+
+  The prompt's strictest rule is that every table, column, threshold and
+  paragraph reference must come from the input. This is the last step before a
+  human reads the output, so an invented detail here is indistinguishable from a
+  finding — the same failure that policy_author showed when it quoted BCBS 239
+  accurately from training knowledge rather than from the document it was given.
+
+changelog:
+  - version: 0.1.0
+    date: 2026-08-27
+    note: >
+      Initial version, written against the verified pde_mapping schema and real
+      mapper output (artifacts/pde-mapping-postsql-01.json). UNTESTED.
+      Watch for, in order:
+        1. Invented columns, thresholds or paragraph references. Diff every
+           fully_qualified_name and every authority against the input
+           mechanically; do not eyeball them.
+        2. Recomputed counts. It must use coverage_summary as given and report a
+           contradiction rather than silently fixing it.
+        3. Softening. If most elements are absent, the headline must say so.
+        4. Losing the `authority` on a monitor — that paragraph reference is why
+           a steward accepts the monitor.
+        5. Length. Over ~1,200 words and nobody reads it.
+    result: >
+      First live run 2026-08-28, inside the Flow. The chain executed end to end
+      and the report is genuinely readable — structure, ordering worst-first,
+      monitors with thresholds and paragraph authority all correct, and every
+      column name traceable to the mapper's output. Watch items 1, 3, 4 and 5
+      passed.
+
+      Watch item 2 FAILED, in an instructive way. The mapper's
+      `coverage_summary` said `mapped: 7` when nine mappings carried
+      `status: "mapped"`, and the four figures summed to 10 against a
+      `cde_count` of 12. Its monitor count was also wrong (11 claimed, 14
+      present). The report faithfully printed 7 in the headline while its own
+      table listed 9 mapped rows — an internal contradiction. It never triggered
+      the section-5 discrepancy note.
+
+      My prompt caused half of this: v0.1.0 said "do not recompute counts, use
+      coverage_summary as given" and merely invited a contradiction note. That
+      was the wrong instruction. Counting twelve rows is low-risk arithmetic; a
+      headline that contradicts the table below it destroys trust in the whole
+      document. In the terminal path normalize_mapping.py recomputes these
+      fields, but a Flow has no code step, so the agent is the only place the
+      check can happen.
+  - version: 0.2.0
+    date: 2026-08-28
+    note: >
+      Counts are now recomputed by the agent and its own tally is authoritative
+      for the headline and table. Two explicit checks: do the four status figures
+      sum to cde_count, and does each match its own count. Any disagreement with
+      coverage_summary must be stated in section 5 with both numbers. The
+      before-you-return checklist now says to verify the headline against the
+      table rather than against the input.
+      Prediction: headline becomes "9 mapped, 3 partial", section 5 carries a
+      discrepancy note naming 7 vs 9, and the monitor total reads 14.
+    result: >
+      Run 2026-08-28 in the Flow (a fresh mapper payload, so the predicted
+      figures do not apply — but the mechanism does). The instruction WORKED in
+      the sense it was written for: the agent stopped transcribing
+      coverage_summary and did produce a section-5 discrepancy note naming both
+      numbers. It also got every per-row figure right — all 11 `+N more` counts
+      and all 11 monitor counts matched the input exactly (16 monitors, 16
+      rendered).
+
+      And it was still wrong, three times, which is the finding.
+
+      1. The status tally. Mapper's actual statuses: mapped 6 (CDE-04, 05, 06,
+         07, 08, 09), partial 4 (01, 02, 03, 10), not_found 1 (11).
+         Mapper's own `coverage_summary`: mapped 4, partial 6 — transposed.
+         The report's recount: mapped 5, partial 5. **So the report produced a
+         third wrong number after being handed one wrong number and told to
+         check it.** Neither figure in the document was correct.
+      2. The confidence distribution. Reported "High 31, Medium 5" — 36
+         candidates. There are 47 (41 high, 6 medium). Off by eleven, and the
+         total did not even match the number of candidates it had just rendered
+         one by one in section 3.
+      3. It silently reclassified CDE-06 from `mapped` to `partial` in both the
+         headline and the table, on its own judgement about a type-inconsistency
+         blocker — while writing in section 5 that "the upstream agent's mapped
+         status is reproduced accurately in the tally". It was not. The concern
+         was legitimate and worth raising; changing the status to express it was
+         not, and it made two parts of the document contradict each other.
+
+      Read together with the interpreter's and mapper's own count failures, this
+      is the fifth and sixth confirmed instance of a model in this pipeline
+      getting individual rows right and aggregates wrong. The instruction
+      "count them, do not estimate" has now been tried in two prompts and failed
+      in both. Stop asking.
+
+      Note the shape of it: **per-row transcription was flawless; every error was
+      a sum across rows.** That is the line to design against, and v0.3.0 draws
+      it there.
+  - version: 0.3.0
+    date: 2026-08-28
+    note: >
+      Removes arithmetic from the report entirely rather than trying to make the
+      model better at it.
+        * No totals, counts, tallies, percentages or distributions anywhere. The
+          headline NAMES the not_found elements instead of counting them; the
+          coverage table is the coverage picture. Per-row figures (`+N more`,
+          monitor count) are explicitly still allowed, because those are the
+          ones that have never been wrong.
+        * `coverage_summary`'s four numeric fields are now to be ignored
+          outright — not read, not reconciled, not mentioned. They are computed
+          in code (normalize_mapping.py) for the terminal path and are simply
+          not this agent's business. Reading them is what invited the arithmetic.
+        * Section 5's confidence distribution becomes "name the elements whose
+          best candidate is not high confidence" — transcription, not tallying.
+        * New hard rule: never change or silently reclassify a status. Raise the
+          concern by name in section 5 and leave the status alone.
+        * Checklist now includes a mechanical pass: search the draft for numbers
+          and delete any sentence whose number is a cross-element total.
+      Prediction: the report contains no aggregate figure; CDE-11 Net /
+      Post-Mitigation Exposure Amount is named in the headline as absent; CDE-06
+      appears as `mapped` in the table with the VARCHAR(16777216) concern raised
+      in section 5; the confidence caveat names CDE-03 and CDE-06 as the
+      medium-confidence elements without counting them.
+    result: pending

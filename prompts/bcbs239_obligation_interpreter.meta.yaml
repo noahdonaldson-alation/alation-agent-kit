@@ -1,0 +1,297 @@
+name: bcbs239_obligation_interpreter
+purpose: >
+  Step 1 of the revised BCBS 239 pipeline. Pure interpretation: read the
+  regulation and identify the OBLIGATIONS it places on the bank, one per
+  principle, with the citations and measurable expectations a policy author needs
+  to write a derivable policy body. Reads nothing from the catalog and creates
+  nothing.
+
+  Deliberately does NOT identify Critical Data Elements. That step moves later in
+  the chain and runs against the published standard, not against the regulation
+  — see the v0.1.0 changelog entry for why.
+
+target_agent: bcbs239_obligation_interpreter
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+  # Same model as bcbs239_cde_dq_interpreter, on purpose. This prompt is being
+  # compared against that one's measured stability, and changing the model at the
+  # same time as the task would make the comparison meaningless.
+
+# Empty by design. The prompt body is a system prompt with NO template variables,
+# so the file on disk is byte-identical to what Agent Studio holds — which is
+# what makes local testing meaningful. Agent Studio has no templating, so any
+# {{ var }} left in the body would reach the model as literal text.
+deploy_variables: {}
+
+output:
+  format: json
+  schema: schemas/obligation_register.schema.json
+  # JSON from v0.1.0, unlike the CDE interpreter which started as markdown and
+  # only earned JSON once it fed a downstream agent. This one feeds policy_author
+  # from its first run, so there is no markdown phase to go through.
+  #
+  # Do NOT set output_json_schema on the agent itself — it fights the prompt's
+  # own format instructions. Validate after the fact with:
+  #   python3 scripts/validate_output.py --schema schemas/obligation_register.schema.json FILES
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  type: string
+  produced_by: scripts/extract_bcbs239.py -> artifacts/bcbs239/bank_principles.txt
+  chunking: none — all bank-facing principles (1-11) together, ~6.5k tokens
+  rationale: >
+    The out-of-scope judgement and the cross-cutting obligations both require
+    seeing every principle at once. Sending one principle at a time makes the
+    governable/not-governable procedure unrunnable, because step 4 (a principle
+    landing in both places) cannot be detected from a single principle.
+
+agent_config:
+  tools: []          # deliberately none — pure interpretation, nothing to look up
+  mode: tool_call
+
+changelog:
+  - version: 0.1.0
+    date: 2026-08-28
+    note: >
+      New agent, not a revision of bcbs239_cde_dq_interpreter. That prompt stays
+      at v0.6.0, untouched, because it holds the only 10-run stability baseline in
+      the repo and it still has a job — re-pointed at a published standard rather
+      than at the regulation.
+
+      WHY THIS EXISTS. Two things forced the pipeline to start with obligations
+      rather than with CDEs:
+
+      1. Alation's object model. A Template Overlay standard cannot be created
+         without a source business policy, and Critical Data Manager derives the
+         standard's requirements from that policy's prose. So policy -> standard
+         -> CDE is the only legal order, and a register of CDEs derived straight
+         from the regulation has nothing to attach to.
+      2. Our own measurement. Across the 10 committed v0.6.0 runs, PRINCIPLE
+         coverage was stable and CDE MEMBERSHIP was not — currency 5/10,
+         collateral/net exposure 5/10, risk limit 1/10, liquidity 1/10. The model
+         is reliable at reading obligations out of the text and unreliable at
+         inferring which data elements they imply, in one hop, unanchored. This
+         prompt asks only the question the measurement says it can answer.
+
+      DESIGN, and which earlier result each part is borrowed from:
+
+        - Named required coverage (principles 2-8 in a table, explicit
+          justification required to omit one). This is the change that took the
+          CDE interpreter's stability from 33% to 77% at v0.2.0; here the anchor
+          is an integer principle number rather than a fuzzy concept name, so it
+          should hold harder.
+        - A decision PROCEDURE for governable vs out-of-scope, not a descriptive
+          rubric, with the completed sentence carried in the output as
+          `governable_because`. v0.3.0 established that describing categories
+          lets each run re-derive the boundary; a procedure plus a visible
+          artifact of having run it eliminated criticality drift entirely.
+        - Mandatory cross_cutting and out_of_scope sections. 3 of 8 runs omitted
+          cross-cutting before it was declared mandatory at v0.2.0.
+        - Per-expectation citations and justified thresholds, carried over intact
+          from v0.5.0, which added them because DQ checks had authority that was
+          only inferable from their parent.
+        - NO counts, totals or summaries anywhere in the output. Five confirmed
+          occurrences of a model in this pipeline miscounting its own rows, and
+          the instruction "count them, do not estimate" has failed in two
+          prompts. The question is removed rather than asked more firmly.
+        - Deterministic refs (OBL-P02..OBL-P08, principle number embedded). The
+          v0.3.0 assessment recorded a "missing from 1 of 10 runs" finding that
+          turned out to be a comparator bucketing error — run06 named the
+          reconciliation key differently and the lineage bucket claimed it. Keying
+          on the principle number makes that class of false finding impossible,
+          and makes run-to-run comparison a set difference rather than a
+          heuristic.
+
+      THE LOAD-BEARING NEW INSTRUCTION is `measurable_expectations`, and it is
+      new because the architecture changed. CDM reads the POLICY, not the
+      regulation. So any quality expectation that does not survive into the
+      policy body cannot be derived into a requirement, and the DQ half of the
+      solution evaporates silently between step 2 and step 5. The prompt
+      therefore requires expectations phrased as obligations on the bank
+      ("shall carry a resolvable identifier") rather than as monitors on columns
+      ("count of nulls"), plus an `evidence` field that is the explicit bridge to
+      an attestation.
+
+      THE BOUNDARY MOST LIKELY TO BE CROSSED is extraction vs inference. The
+      model is being asked to name data concepts the regulation names, while NOT
+      promoting them to CDEs with refs and criticality — which is exactly what
+      its sibling prompt trained on this same document does. `as_stated` exists to
+      make the line checkable: a concept whose framing is not in the text is
+      inference that leaked through.
+
+      HYPOTHESIS BEING TESTED: obligations keyed to principles will be stable at
+      or near 100% membership across runs, where CDE membership converged only to
+      ~83% (10 of 12 slots). If obligation membership also churns, the problem is
+      not the question being asked and the next move is a coverage contract
+      computed in Python and injected at runtime, the way authoring.py already
+      does for policy_author.
+
+      HOW TO MEASURE. Do not use scripts/compare_runs.py — it parses the CDE
+      summary table and will yield 0 rows here. Because refs are deterministic,
+      stability is a plain set comparison on obligations[].ref across runs; the
+      interesting per-run variation is in measurable_expectations (count per
+      obligation, dimensions chosen) and in which principles land in out_of_scope.
+      Run N>=3 before drawing any conclusion, and N>=5 before quoting one.
+
+      RESULT (run01, N=1): the coverage hypothesis held on the first run.
+      Exactly 7 obligations, OBL-P02 through OBL-P08, every required principle
+      present. 3 cross-cutting (floor is 2). out_of_scope covered principles 1,
+      9, 10 and 11, and BOTH overlap cases were caught with also_obligates set —
+      P8 (report comprehensiveness out of scope, but it names a required
+      reporting dimension) and P10 (frequency, pointing at OBL-P05). Step 4 of
+      the procedure worked without being prompted for a specific example.
+      Zero schema errors. Structural coverage is N=1 and proves nothing yet.
+
+  - version: 0.1.1
+    date: 2026-08-28
+    note: >
+      Driven by a defect found in run01 by a check that did not previously
+      exist anywhere in this pipeline: comparing the interpreter's quotations
+      against the source text it was given. 29 of 40 quotes were verbatim.
+
+      Root-caused into two halves, which matters because only one of them is
+      the prompt's problem:
+
+      SOURCE SIDE (fixed in scripts/extract_bcbs239.py, not here). pypdf inlines
+      superscript footnote markers into the prose — `A bank should establish
+      integrated 16 data taxonomies`, `country credit exposures18 as of`,
+      `expertise.14`, `risk management program , 13 and`. A model quoting those
+      sentences correctly OMITS the marker, so a correct quotation failed a
+      verbatim check against our own file. This is the worst possible failure
+      mode for a provenance check: it makes right answers look invented.
+      Stripping the markers took traceability from 29/40 to 34/40.
+
+      MODEL SIDE (this version). The remaining 6 are one behaviour wearing four
+      hats — the model edits quotations so they read better:
+        1. substituted quotation marks: wrote 'dictionary' where the source has
+           "dictionary";
+        2. compressed a multi-sentence list item, replacing a sentence break
+           with a semicolon;
+        3. SKIPPED a list item — quoted para 49 as "(a) ... ; (c) ... ; (d) ..."
+           where the source has a (b) between them, with nothing to signal the
+           removal;
+        4. joined two sentences that are not adjacent in the source (XOB-03).
+      Item 3 is the serious one. An abridgement a reader can see is a style
+      choice; one they cannot see is a misquotation.
+
+      Change: a "A quotation is ONE CONTIGUOUS SPAN" rule naming all four
+      failures explicitly, with the instruction to quote LESS rather than to
+      quote an abridged version of more, plus a "Before you return" section
+      asking for each quote to be located in the source before returning.
+
+      Note this is the same class of failure recorded for policy_author v0.2.0 —
+      instruction reduced recall-substitution 4 -> 2 but did not eliminate it —
+      so temper expectations. If quotes are still drifting at N>=3, the fix is
+      the same one proposed there: stop asking the model to transcribe. Have it
+      emit a pointer (paragraph number plus a short locator phrase) and have
+      Python extract the exact span from the source. Judgement stays with the
+      model; the exact action moves to code, and a quote becomes untraceable by
+      construction rather than by instruction.
+
+      HOW TO MEASURE, now automated:
+        python3 scripts/validate_output.py \
+          --source artifacts/bcbs239/bank_principles.txt \
+          docs/runs/obl-v0.1.1/*.json
+      The summary line reports "N/M quotes traceable" per run. Mismatches are
+      reported as NOT TRACEABLE, never as "fabricated" — on run01 every single
+      one turned out to be tidying rather than invention, and the check cannot
+      tell the two apart.
+
+      RESULT (run01, N=1): quote traceability 29/40 -> 36/36, with the extractor
+      fix accounting for part of it (29 -> 34 on the old output, then v0.1.1 took
+      the remaining 6). All four named failures cleared.
+
+      THE COST IS REAL AND SHOULD BE WATCHED, because "quote less" is a way to
+      score well on this metric by saying less. Measured v0.1.0 -> v0.1.1 on the
+      same input: quotes 40 -> 36, mean quote length 229 -> 174 chars, longest
+      428 -> 313, total quoted characters 9,158 -> 6,271 — a 32% reduction in how
+      much regulation text reaches the register. That matters more here than it
+      would elsewhere, because quoted text is what lands in the policy body and
+      the policy body is the ONLY thing Critical Data Manager reads. Traceable
+      and thin can be worse than long and slightly drifted.
+      Structure held: 7 obligations at the same 7 principles, 3 cross-cutting,
+      5 out_of_scope, statement length unchanged (mean 530), thresholds still on
+      100% of expectations (17/17). Two movements worth watching, both N=1 and
+      neither yet a finding: OBL-P06 data_concepts 2 -> 0 (arguably CORRECT — the
+      prompt says adaptability is about capability, not data content, and asks
+      for an empty list rather than an invention) and P05 timeliness expectations
+      2 -> 1.
+
+  - version: 0.1.2
+    date: 2026-08-28
+    note: >
+      Contract fix, not a behaviour fix — the defect was mine, in the output
+      shape, not the model's.
+
+      `also_obligates` was being used in two incompatible senses. Intended:
+      "this same principle is partly governable, here is its own obligation"
+      (P8 -> OBL-P08). Observed: a P10 entry pointing at OBL-P05 in BOTH runs,
+      and a P9 entry pointing at OBL-P03 in v0.1.1. That is a cross-reference,
+      and it is real, useful information — frequency is not governable as data
+      policy, but timeliness is the nearest obligation to it — that had nowhere
+      to live, so it colonised the nearest field. One key, two meanings, and no
+      reader or downstream agent can tell which was meant.
+
+      Change: `also_obligates` documented as strictly self-referential, new
+      optional `related_obligations` for the cross-reference, both enforced in
+      validate_output.py (a ref in the wrong one is now an error in both
+      directions). Giving a true statement its own key beats instructing a model
+      not to make it.
+
+      SCOPE: this touches the out_of_scope section only. The quoting rules are
+      untouched, so quote-traceability numbers remain directly comparable across
+      v0.1.1 and v0.1.2 runs.
+
+      RESULT (N=4, docs/runs/obl-v0.1.2/): all four valid, and the v0.1.0
+      hypothesis is confirmed.
+
+        - MEMBERSHIP IS STABLE AT 100%. Identical obligation set on every run —
+          OBL-P02..OBL-P08, 3 cross-cutting, 5 out_of_scope, four times out of
+          four. Compare bcbs239_cde_dq_interpreter, where 10 concepts held
+          across 10 runs but the 11th/12th slot never converged. Asking for
+          obligations rather than for the CDEs they imply is the difference.
+        - QUOTE TRACEABILITY 100% on every run (37/37, 39/39, 37/37, 39/39).
+        - also_obligates misuse: 0 across all four, against 1 in v0.1.0 and 2 in
+          v0.1.1. Giving the cross-reference its own key worked.
+        - Expectation counts are IDENTICAL run to run: [3,3,2,2,2,3,2] four
+          times. Not just the same total — the same distribution per obligation.
+        - The v0.1.1 thinning did NOT continue, which was the thing to watch.
+          Total quoted characters: 6,274 / 7,466 / 6,636 / 6,602, mean 6,744
+          against v0.1.0's 9,158. So the shortening happened once when the
+          contiguity rule landed and then held ~26% below baseline. That is a
+          price paid for traceability, not a slide.
+
+      THE ONE UNSTABLE FIELD is OBL-P06 `data_concepts`: 0, 0, 2, 2. The prompt
+      explicitly permits either answer — adaptability is about capability rather
+      than data content, and it asks for an empty list rather than an invention —
+      so this is the model wavering on a judgement the contract allows both ways.
+      Low stakes. Do not "fix" it without deciding which answer is right first.
+
+      DOWNSTREAM CONSEQUENCE, not a defect but it lands on the next step:
+      obligation TITLES vary in wording every run (OBL-P02 came out as
+      "Integrated Data Architecture and Infrastructure for Risk Aggregation",
+      "Risk Data Architecture and Infrastructure Integrity", and "Integrated Data
+      Architecture and Single Identifiers"). Identity is carried by the ref, so
+      this is harmless here — but the title becomes the business policy title,
+      and policies.py recovers ids by searching the namespaced title. Within one
+      deployment that is fine, the title is fixed at apply time. Across
+      re-runs it means the same obligation produces a differently-named policy,
+      which is precisely the case the reconciliation/fuzzy-match step exists to
+      handle. Do not attempt to stabilise titles by instruction; match on ref.
+
+      ARTIFACT NOTE: docs/runs/obl-v0.1.2/run04.json is a legitimate v0.1.2 run
+      that was written to the v0.1.1 path by mistake and relabelled. The true
+      v0.1.1 output was overwritten before it was committed and is lost; its
+      measurements survive only in the v0.1.1 entry above. A run file records
+      nothing about the prompt that produced it, so the directory name is the
+      only version marker and it is set by hand — worth fixing.
+
+  # NOTE FOR WHOEVER EDITS THIS NEXT: bcbs239_cde_dq_interpreter.meta.yaml has a
+  # missing changelog entry — its last entry is v0.5.0 but the prompt is at
+  # v0.6.0 and docs/runs/v0.6.0/ holds its runs. Same hole as the one recorded in
+  # bcbs239_pde_mapper.meta.yaml. Recorded here rather than silently reconstructed,
+  # because guessing what v0.6.0 changed would be worse than a known gap.

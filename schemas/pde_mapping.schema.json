@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "CDE requirements -> physical data elements (pipeline step 3 output)",
-  "description": "Gap analysis of a BCBS 239 requirements register against a real Alation instance. Records what was searched, what was found, what already exists, and \u2014 critically \u2014 what was NOT found, because a missed match is otherwise invisible in the output.",
+  "description": "Gap analysis of a BCBS 239 requirements register against a real Alation instance. Records what was searched, what was found, what already exists, and — critically — what was NOT found, because a missed match is otherwise invisible in the output.",
   "type": "object",
   "required": [
     "source_register",
@@ -108,7 +108,7 @@
           "searched_for": {
             "type": "array",
             "minItems": 1,
-            "description": "The search terms actually used. Required even when nothing was found \u2014 this is the record that a search happened.",
+            "description": "The search terms actually used. Required even when nothing was found — this is the record that a search happened.",
             "items": {
               "type": "string"
             }
@@ -156,7 +156,7 @@
                 "why_matched": {
                   "type": "string",
                   "minLength": 15,
-                  "description": "What in the catalog metadata supports this being the element \u2014 name, description, lineage, or usage"
+                  "description": "What in the catalog metadata supports this being the element — name, description, lineage, or usage"
                 },
                 "confidence": {
                   "type": "string",
@@ -213,7 +213,7 @@
                 },
                 "authority": {
                   "type": "string",
-                  "description": "The BCBS 239 paragraph carried through from the register, e.g. '\u00b643'"
+                  "description": "The BCBS 239 paragraph carried through from the register, e.g. '¶43'"
                 },
                 "existing_monitor": {
                   "type": [
@@ -227,7 +227,7 @@
           },
           "blockers": {
             "type": "array",
-            "description": "Why this could not be mapped \u2014 no such data, not crawled, ambiguous naming, insufficient metadata",
+            "description": "Why this could not be mapped — no such data, not crawled, ambiguous naming, insufficient metadata",
             "items": {
               "type": "string"
             }
@@ -238,34 +238,34 @@
     "coverage_summary": {
       "type": "object",
       "required": [
-        "mapped",
-        "partial",
-        "not_found",
-        "already_exists",
         "honest_assessment"
       ],
       "additionalProperties": false,
       "properties": {
         "mapped": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "OPTIONAL and no longer requested from the model. A function of mappings[].status, wrong on 4 of the 5 live runs that emitted it. Computed by scripts/normalize_mapping.py; kept in the schema only so artifacts from earlier runs still validate. Do not read it in the Flow report path."
         },
         "partial": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "OPTIONAL and no longer requested from the model. A function of mappings[].status, wrong on 4 of the 5 live runs that emitted it. Computed by scripts/normalize_mapping.py; kept in the schema only so artifacts from earlier runs still validate. Do not read it in the Flow report path."
         },
         "not_found": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "OPTIONAL and no longer requested from the model. A function of mappings[].status, wrong on 4 of the 5 live runs that emitted it. Computed by scripts/normalize_mapping.py; kept in the schema only so artifacts from earlier runs still validate. Do not read it in the Flow report path."
         },
         "already_exists": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "OPTIONAL and no longer requested from the model. A function of mappings[].status, wrong on 4 of the 5 live runs that emitted it. Computed by scripts/normalize_mapping.py; kept in the schema only so artifacts from earlier runs still validate. Do not read it in the Flow report path."
         },
         "honest_assessment": {
           "type": "string",
           "minLength": 40,
-          "description": "What this instance can and cannot evidence against the register, stated plainly. If coverage is thin, say so \u2014 a thin result is a finding, not a failure."
+          "description": "What this instance can and cannot evidence against the register, stated plainly. If coverage is thin, say so — a thin result is a finding, not a failure."
         },
         "recommended_next_actions": {
           "type": "array",
@@ -273,7 +273,8 @@
             "type": "string"
           }
         }
-      }
+      },
+      "description": "Judgement about the assessment as a whole. honest_assessment is required; the four status counts are legacy-optional and are computed in code."
     }
   }
 }

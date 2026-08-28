@@ -9,6 +9,7 @@
     agentkit run <agent-name> [--input-file FILE] [-o out.md] [-v] [--raw]
     agentkit prompts
     agentkit tool show <name> | deploy <file.json>
+    agentkit workflow deploy|run|runs|list|probe-payload
     agentkit preflight [--skip-unstructured]
     agentkit pipeline [--source file|unstructured] [--stop-after interpret]
 """
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -157,11 +159,27 @@ def cmd_deploy(args) -> int:
         prompt = load_prompt(args.prompt)
         doc = sync_prompt_into_agent(doc, prompt)
         print(f"Using prompt {args.prompt!r} (sha={prompt.sha256}, git={prompt.git_sha()})")
-        if "{{" in doc["prompt"] or "}}" in doc["prompt"]:
+        # Match an actual Jinja construct, not a lone delimiter. The previous
+        # test was `"{{" in prompt or "}}" in prompt`, which fired on any prompt
+        # whose JSON example has a nested object closing at the same point as its
+        # parent — `"quote": "verbatim"}}`. Both interpreter prompts do, so this
+        # warned on every deploy of known-good prompts, which is how a check
+        # teaches you to ignore it. Jinja only substitutes a matched pair; a bare
+        # `}}` is literal text and reaches the model correctly.
+        leftover = re.findall(r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}",
+                              doc["prompt"], re.S)
+        if leftover:
             print(
-                "  ! prompt still contains {{ }} after rendering. Agent Studio has no "
-                "templating, so this would reach the model literally."
+                "  ! prompt still contains unrendered Jinja after rendering. "
+                "Agent Studio has no templating, so this reaches the model "
+                "literally. Either declare it under deploy_variables in the "
+                "sidecar meta, or it is runtime input and does not belong in "
+                "the prompt body at all:"
             )
+            for frag in leftover[:5]:
+                print(f"      {frag[:90]!r}")
+            if len(leftover) > 5:
+                print(f"      ... and {len(leftover) - 5} more")
 
     # --dry-run must work with no credentials — it is the offline sanity check.
     if args.dry_run:
@@ -639,6 +657,15 @@ def cmd_tool(args) -> int:
         if not hits:
             print(f"No tool matching {args.target!r}")
             return 1
+        if args.raw:
+            # Every field, including http_config — which `show` otherwise never
+            # prints. This is the recovery path for a custom tool that exists on
+            # the instance but has no source file in the repo: dump it here and
+            # write it back to tools/. Earned 2026-08-28, when the cleanup pass
+            # deleted the definitions for two live HTTP tools on the strength of
+            # an inventory note that wrongly said they were never deployed.
+            print(json.dumps(hits, indent=2, sort_keys=True))
+            return 0
         for tool in hits:
             print(f"\n=== {tool.get('name')} ===")
             print(f"  id:            {tool.get('id')}")
@@ -646,14 +673,132 @@ def cmd_tool(args) -> int:
             print(f"  tool_type:     {tool.get('tool_type')}")
             print(f"  visibility:    {tool.get('visibility_label')}")
             print(f"  default_ref:   {tool.get('default_ref')}")
-            print(f"  description:   {str(tool.get('description') or '')[:300]}")
-            print("  input_parameter_schema:")
-            print(json.dumps(tool.get("input_parameter_schema"), indent=4)[:2500])
+            desc = str(tool.get("description") or "")
+            schema = json.dumps(tool.get("input_parameter_schema"), indent=4)
+            if args.full:
+                print(f"  description:\n{desc}")
+                print("  input_parameter_schema:")
+                print(schema)
+            else:
+                print(f"  description:   {desc[:300]}"
+                      + (f"\n                 ... +{len(desc)-300} chars "
+                         f"(--full to see all)" if len(desc) > 300 else ""))
+                print("  input_parameter_schema:")
+                print(schema[:2500])
+                if len(schema) > 2500:
+                    print(f"    ... +{len(schema)-2500} chars (--full to see all)")
         return 0
 
     doc = read_json(args.target)
     st.deploy_tool(doc, dry_run=args.dry_run)
     return 0
+
+
+def cmd_workflow(args) -> int:
+    """Deploy, run and inspect Agent Studio Flows."""
+    from .workflows import Workflows, probe_payload
+
+    client = AlationClient(Settings.from_env())
+    wf = Workflows(client)
+
+    if args.action == "list":
+        rows = wf.list()
+        for w in rows:
+            nodes = len(((w.get("definition") or {}).get("nodes")) or [])
+            print(f"  {str(w.get('id')):38}  {w.get('name')}  ({nodes} node(s))")
+        print(f"\n{len(rows)} workflow(s)")
+        return 0
+
+    if args.action == "probe-payload":
+        print("Testing whether a large payload survives step-to-step passing.")
+        print("Creates a throwaway flow and deletes it again.\n")
+        for line in probe_payload(client, size_kb=args.size_kb):
+            print(line)
+        return 0
+
+    if args.action == "deploy":
+        doc = read_json(args.target)
+        log: list[str] = []
+
+        # The regulation text is a placeholder in the committed file so a ~120KB
+        # blob is not sitting in git. Substitute at deploy time.
+        text_path = Path(args.regulation)
+        raw = json.dumps(doc)
+        if "__REGULATION_TEXT__" in raw:
+            if not text_path.is_file():
+                print(f"ERROR: the flow needs the regulation text, but "
+                      f"{text_path} is missing.\n"
+                      f"Extract it first: python3 scripts/extract_bcbs239.py "
+                      f"artifacts/bcbs239.pdf")
+                return 1
+            text = text_path.read_text(encoding="utf-8")
+            doc = json.loads(raw.replace("__REGULATION_TEXT__",
+                                         json.dumps(text)[1:-1]))
+            print(f"Embedded {len(text):,} chars of regulation text from "
+                  f"{text_path}")
+
+        if not args.dry_run:
+            doc = wf.resolve_agents(doc, log)
+            for line in log:
+                print(line)
+        wf.deploy(doc, dry_run=args.dry_run)
+        return 0
+
+    if args.action == "run":
+        wid = wf.resolve_id(args.target) or args.target
+        started = wf.execute(wid, background=not args.sync)
+        eid = (started or {}).get("id") or (started or {}).get("execution_id")
+        print(f"Started execution {eid}")
+        if args.no_wait:
+            print(f"Check progress: ./run.sh workflow runs {args.target}")
+            return 0
+        final = wf.await_run(eid)
+        print(f"Status: {final.get('status')}")
+        if final.get("error_message"):
+            print(f"Error: {final['error_message']}")
+        print()
+        # Print INPUT size as well as output. The input is the truncation
+        # evidence: if `map` receives far less than `interpret` produced, the
+        # register was clipped in transit and the mapper's poor result would
+        # look like a model failure rather than a plumbing one.
+        prev_out = None
+        for n in wf.nodes(eid):
+            nid = n.get("node_id") or n.get("id")
+            in_size = len(json.dumps(n.get("input_data") or {}, default=str))
+            out = n.get("output_data")
+            out_size = len(json.dumps(out, default=str)) if out else 0
+            flag = ""
+            if prev_out and in_size < prev_out * 0.9:
+                flag = (f"   <- INPUT SMALLER THAN UPSTREAM OUTPUT "
+                        f"({prev_out:,} -> {in_size:,}): possible truncation")
+            print(f"--- node {nid!r}  status={n.get('status')}  "
+                  f"in {in_size:,} / out {out_size:,} chars{flag}")
+            prev_out = out_size or prev_out
+        # The last node's output is the readable report — print it in full.
+        nodes = wf.nodes(eid)
+        if nodes:
+            last = nodes[-1]
+            out = last.get("output_data")
+            text = out if isinstance(out, str) else json.dumps(out, indent=2, default=str)
+            if args.output:
+                Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+                Path(args.output).write_text(str(text), encoding="utf-8")
+                print(f"\nFinal output -> {args.output}")
+            else:
+                print(f"\n=== final output ({last.get('node_id')}) ===")
+                print(text)
+        ok = str(final.get("status", "")).lower() in (
+            "completed", "succeeded", "success")
+        return 0 if ok else 1
+
+    if args.action == "runs":
+        wid = wf.resolve_id(args.target) or args.target
+        for r in wf.runs(wid):
+            print(f"  {str(r.get('id')):38}  {r.get('status'):12}  "
+                  f"{r.get('trigger_type', '')}  {r.get('created_at', '')}")
+        return 0
+
+    return 1
 
 
 def cmd_prompts(args) -> int:
@@ -715,7 +860,32 @@ def build_parser() -> argparse.ArgumentParser:
     ts.add_argument("action", choices=["show", "deploy"])
     ts.add_argument("target", help="Tool name (show) or file path (deploy)")
     ts.add_argument("--dry-run", action="store_true")
+    ts.add_argument("--full", action="store_true",
+                    help="Print the whole description and schema — built-in tools "
+                         "document their contract there and truncating it means "
+                         "guessing")
+    ts.add_argument("--raw", action="store_true",
+                    help="Dump every field as JSON, including http_config — use "
+                         "this to recover a custom tool's definition from the "
+                         "instance when the source file is missing")
     ts.set_defaults(func=cmd_tool)
+
+    pw = sub.add_parser("workflow", help="Agent Studio Flows")
+    pw.add_argument("action",
+                    choices=["list", "deploy", "run", "runs", "probe-payload"])
+    pw.add_argument("target", nargs="?", default="workflows/bcbs239-gap-analysis.json",
+                    help="File path (deploy) or workflow name (run/runs)")
+    pw.add_argument("--regulation",
+                    default="artifacts/bcbs239/bank_principles.txt",
+                    help="Text substituted for __REGULATION_TEXT__ at deploy time")
+    pw.add_argument("--dry-run", action="store_true")
+    pw.add_argument("--sync", action="store_true",
+                    help="Use execute-sync. Background is safer for big payloads")
+    pw.add_argument("--no-wait", action="store_true")
+    pw.add_argument("-o", "--output", help="Write the final step's output here")
+    pw.add_argument("--size-kb", type=int, default=56,
+                    help="For probe-payload: blob size to push through")
+    pw.set_defaults(func=cmd_workflow)
 
     pl = sub.add_parser("list")
     pl.add_argument("kind", choices=["agents", "tools", "llms"])

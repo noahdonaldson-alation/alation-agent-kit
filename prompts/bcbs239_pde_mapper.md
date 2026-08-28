@@ -138,7 +138,6 @@ Conforms to `schemas/pde_mapping.schema.json`.
     }
   ],
   "coverage_summary": {
-    "mapped": 4, "partial": 3, "not_found": 4, "already_exists": 0,
     "honest_assessment": "what this instance can and cannot evidence, plainly",
     "recommended_next_actions": ["..."]
   }
@@ -148,11 +147,29 @@ Conforms to `schemas/pde_mapping.schema.json`.
 Every register entry gets a mapping object, including the ones you could not
 find. The register's `cde_count` and the length of `mappings` must agree.
 
+**Do not emit status counts.** `coverage_summary` carries no `mapped`,
+`partial`, `not_found` or `already_exists` figures — those are a function of
+`mappings[].status` and are computed downstream in code
+(`scripts/normalize_mapping.py`). This is not a formatting preference: those
+four numbers were wrong on four of the five live runs that produced them,
+including runs where the prompt said in as many words "count them; do not
+estimate". On one run `mapped` read 4 where six mappings carried
+`status: "mapped"`; on another it read 7 against nine. Getting each individual
+mapping right and the total wrong is the reliable failure mode here, so the
+total has been removed rather than re-requested.
+
+`honest_assessment` is still yours, and it is the more valuable field. Write it
+in prose and **name the elements** you are talking about rather than counting
+them — "CDE-01, CDE-02, CDE-03 and CDE-10 are partial because …" is both more
+useful to a reader and impossible to get arithmetically wrong. If your prose
+groups elements, the refs you list must match the `status` values you actually
+assigned; on one run the assessment described CDE-07 and CDE-09 as partial while
+their own mapping objects said `mapped`.
+
 ## Before you return — check your own output
 
 Long structured output drifts out of self-consistency near the end. Verify these
-four things against what you have actually written, not against what you
-intended:
+against what you have actually written, not against what you intended:
 
 1. **Every `proposed_dq_monitors[].target` appears verbatim as a
    `fully_qualified_name` in that same mapping's `candidates`.** If one does
@@ -161,13 +178,29 @@ intended:
    a target dangling.
 2. **`status` agrees with `candidates`.** `not_found` means the array is empty.
    If you listed a candidate, the status is `partial` at least.
-3. **`coverage_summary` counts equal the actual statuses.** Count them; do not
-   estimate.
-4. **`mappings` has one entry per register CDE**, and `source_register.cde_count`
+3. **`mappings` has one entry per register CDE**, and `source_register.cde_count`
    matches that length.
+4. **Any element ref named in `honest_assessment` carries the status you claim
+   for it there.** This is per-element checking, not tallying — look each ref up.
+5. **No status counts anywhere in the output.** If you wrote one, delete it.
 
 These are bookkeeping, not judgement, and they are the errors most likely to
 survive into the output.
+
+Note what is deliberately NOT on this list: any instruction to total your own
+statuses. Two prompts in this pipeline have carried that instruction and both
+produced wrong totals anyway. Checks 1–4 all resolve by looking one thing up;
+that is the kind of check that works here.
+
+## No preamble
+
+Return the JSON object and nothing else. Do not narrate what you found before
+emitting it — no "I now have sufficient information to compile the analysis",
+no bulleted summary of search results. A run on 2026-08-28 prefixed the object
+with fourteen lines of findings prose. `extract_json` tolerated it, and the
+downstream agent was unaffected, but it is content outside the contract: it is
+unvalidated, it duplicates `honest_assessment`, and in a Flow it becomes the
+visible head of the step's output in the Runs tab, where it reads as the answer.
 
 ## The test this output must pass
 

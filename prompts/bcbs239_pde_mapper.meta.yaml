@@ -123,3 +123,58 @@ changelog:
       mapping references. Anything you monitor belongs there, with its own
       why_matched and confidence, even if found while looking for something else.
       This closes the last structural failure rather than adding a new rule.
+    result: >
+      Not recorded at the time. The runs that followed are in
+      artifacts/pde-mapping-postsql-01..03.json — 11/11 mapped, stable across
+      three runs, with placeholder monitor targets eliminated.
+  - version: 0.4.0
+    date: unknown
+    note: >
+      MISSING ENTRY — flagged rather than reconstructed. CLAUDE.md, INVENTORY.md
+      and artifacts/pde-mapping-v040.json all refer to a v0.4.0 of this prompt,
+      and that artifact is plainly a distinct run (1 mapped / 4 partial /
+      6 not_found — the pre-SQL-pack baseline). But no v0.4.0 entry was ever
+      written here, so what changed between v0.3.0 and v0.4.0 is not on record.
+      Recovering it means diffing the prompt against git history.
+      Recorded as a gap because a changelog with a silent hole in it is worse
+      than one that admits the hole: the measured-result-per-version discipline
+      is the most valuable thing in these files, and an unexplained version
+      number quietly undermines trust in the rest.
+    result: >
+      artifacts/pde-mapping-v040.json, taken before the SQL pack loaded the
+      missing dimensions. Superseded by the postsql runs above.
+  - version: 0.5.0
+    date: 2026-08-28
+    note: >
+      Stops asking the model to count its own statuses.
+        * `coverage_summary` no longer carries mapped / partial / not_found /
+          already_exists. Those four numbers are a function of
+          `mappings[].status` and were wrong on four of the five live runs that
+          produced them — including runs where this prompt said, in as many
+          words, "count them; do not estimate". Latest failure 2026-08-28: the
+          summary read `mapped: 4, partial: 6` where the actual statuses were
+          `mapped: 6, partial: 4` — cleanly transposed. Downstream,
+          `scripts/normalize_mapping.py` already computes them for the terminal
+          path, and the Flow's report agent is now told to ignore the field
+          outright.
+        * `honest_assessment` survives and is now told to NAME elements rather
+          than count them. On the 2026-08-28 run its prose described CDE-07 and
+          CDE-09 as partial while both mapping objects said `mapped` — so the
+          field disagreed with the document it was summarising. A new per-element
+          check covers this: any ref named in the assessment must carry the
+          status claimed for it.
+        * The before-you-return list drops the tally item and gains two checks
+          that resolve by looking one thing up, plus an explicit note about why
+          no totalling instruction appears on it.
+        * A no-preamble section, because this run prefixed the JSON with fourteen
+          lines of findings prose. Harmless to `extract_json`, but in a Flow it
+          becomes the visible head of the step in the Runs tab, where it reads as
+          the answer.
+      Schema changed in step: the four count fields are now optional rather than
+      required, with a description saying why, so the four historical artifacts
+      still validate — verified, 4/4 pass.
+      Prediction: output carries no status counts; `honest_assessment` names refs
+      and those refs match their own statuses; no prose precedes the JSON.
+      Coverage itself should not move — nothing about the search or judgement
+      instructions changed.
+    result: pending

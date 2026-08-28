@@ -1,0 +1,609 @@
+```json
+{
+  "regulation": {
+    "id": "BCBS239",
+    "title": "Principles for effective risk data aggregation and risk reporting",
+    "publisher": "Basel Committee on Banking Supervision",
+    "published": "2013-01-09",
+    "source_url": "https://www.bis.org/publ/bcbs239.pdf",
+    "scope_note": "Applies to global systemically important banks (G-SIBs) and, by supervisory expectation, to domestically systemically important banks. Principles 1 through 11 are addressed to banks; Principles 12 through 14 are addressed to supervisors and are excluded from this register."
+  },
+  "objectives": [
+    {
+      "objective": "Strengthen risk data aggregation capabilities and internal risk reporting practices at banks so that risk management reports accurately and completely reflect the risks a bank faces, both in normal conditions and during periods of stress or crisis.",
+      "paragraphs": [35]
+    },
+    {
+      "objective": "Ensure that boards and senior management have timely, accurate and sufficiently complete risk information to make effective decisions, and that supervisors can assess whether those capabilities meet the Principles.",
+      "paragraphs": [51]
+    }
+  ],
+  "obligations": [
+    {
+      "ref": "OBL-P02",
+      "principle": 2,
+      "principle_name": "Data architecture and IT infrastructure",
+      "title": "Integrated Data Architecture and Single Identifiers",
+      "statement": "The bank shall establish and maintain integrated data taxonomies and architecture across the banking group, including documented metadata, single identifiers and unified naming conventions for legal entities, counterparties, customers and accounts. The bank shall assign formal ownership of risk data quality to named business and IT functions, ensure controls exist throughout the data lifecycle, and include risk data aggregation capabilities in business continuity planning and business impact analysis.",
+      "rationale": "Without integrated taxonomies, single identifiers and assigned ownership, the same counterparty or legal entity may be represented differently across systems, making cross-system aggregation unreliable and reconciliation impossible. A failure discovered only during a stress event—when continuity planning is activated—cannot be remediated in time to support crisis decision-making.",
+      "governable_because": "A data steward could evidence compliance with this, for a given data element, by showing that the element has a documented metadata definition, that every record carries a resolvable identifier conforming to the group naming convention, and that a named business or IT owner is recorded against the element in the data catalog.",
+      "citations": [
+        {
+          "paragraphs": [33],
+          "quote": "A bank should establish integrated data taxonomies and architecture across the banking group, which includes information on the characteristics of the data (metadata), as well as use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts."
+        },
+        {
+          "paragraphs": [32],
+          "quote": "Risk data aggregation capabilities and risk reporting practices should be given direct consideration as part of a bank's business continuity planning processes and be subject to a business impact analysis."
+        },
+        {
+          "paragraphs": [34],
+          "quote": "Roles and responsibilities should be established as they relate to the ownership and quality of risk data and information for both the business and IT functions."
+        }
+      ],
+      "data_concepts": [
+        {
+          "concept": "metadata describing data characteristics",
+          "as_stated": "information on the characteristics of the data (metadata)",
+          "paragraphs": [33]
+        },
+        {
+          "concept": "single identifier for legal entities",
+          "as_stated": "single identifiers and/or unified naming conventions for data including legal entities",
+          "paragraphs": [33]
+        },
+        {
+          "concept": "single identifier for counterparties",
+          "as_stated": "single identifiers and/or unified naming conventions for data including … counterparties",
+          "paragraphs": [33]
+        },
+        {
+          "concept": "single identifier for customers",
+          "as_stated": "single identifiers and/or unified naming conventions for data including … customers",
+          "paragraphs": [33]
+        },
+        {
+          "concept": "single identifier for accounts",
+          "as_stated": "single identifiers and/or unified naming conventions for data including … accounts",
+          "paragraphs": [33]
+        }
+      ],
+      "measurable_expectations": [
+        {
+          "dimension": "uniqueness",
+          "expectation": "Every record for a legal entity, counterparty, customer or account shall carry exactly one resolvable identifier that conforms to the group-wide naming convention; no record shall carry a null, duplicate or non-conforming identifier.",
+          "evidence": "The data steward shall produce a catalog entry showing the identifier standard applied to the element, the owning function on record, and the most recent measurement of the proportion of records carrying a valid, non-duplicate identifier.",
+          "threshold": "Zero tolerance for null or non-conforming identifiers; any duplicate must be resolved before data is used in aggregation.",
+          "threshold_basis": "A null or non-conforming key means the record cannot be linked across systems at all. Because the purpose of the identifier is cross-system resolution, any failure is a total failure of that record's contribution to aggregation. There is no materiality argument for allowing a proportion of unresolvable keys.",
+          "citation": {
+            "paragraphs": [33],
+            "quote": "A bank should establish integrated data taxonomies and architecture across the banking group, which includes information on the characteristics of the data (metadata), as well as use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts."
+          }
+        },
+        {
+          "dimension": "validity",
+          "expectation": "Every risk data element shall have a documented metadata definition recorded in the group data catalog, and that definition shall be kept current; an element without a metadata record shall not be used in regulatory or senior management risk reporting.",
+          "evidence": "The data steward shall produce the catalog metadata record for the element, including the date it was last reviewed and the name of the accountable owner.",
+          "threshold": "Complete metadata coverage required; no risk data element used in aggregation may lack a catalog entry.",
+          "threshold_basis": "Paragraph 33 requires the taxonomy to include metadata as a structural component of the architecture, not as a best-effort supplement. An element without metadata cannot be governed for accuracy, completeness or timeliness downstream.",
+          "citation": {
+            "paragraphs": [33],
+            "quote": "A bank should establish integrated data taxonomies and architecture across the banking group, which includes information on the characteristics of the data (metadata), as well as use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts."
+          }
+        },
+        {
+          "dimension": "completeness",
+          "expectation": "Risk data aggregation capabilities shall be included in the bank's business continuity plan, and each component's criticality shall be documented in a current business impact analysis.",
+          "evidence": "The data steward shall produce the reference to the business continuity plan section and the business impact analysis record that covers the risk data aggregation capability underpinning the element.",
+          "threshold": "All risk data aggregation capabilities must be covered; the business continuity plan may not exclude any capability that feeds a material risk report.",
+          "threshold_basis": "Paragraph 32 treats continuity planning as a precondition, not an option. A gap means the capability has no recovery objective and no tested fallback, which defeats the stress-resilience purpose of the Principle.",
+          "citation": {
+            "paragraphs": [32],
+            "quote": "Risk data aggregation capabilities and risk reporting practices should be given direct consideration as part of a bank's business continuity planning processes and be subject to a business impact analysis."
+          }
+        }
+      ],
+      "confidence": 0.88
+    },
+    {
+      "ref": "OBL-P03",
+      "principle": 3,
+      "principle_name": "Accuracy and Integrity",
+      "title": "Risk Data Accuracy, Reconciliation and Authoritative Source",
+      "statement": "The bank shall aggregate risk data in a manner that is accurate and reliable, applying controls at least as robust as those applied to accounting data. The bank shall reconcile risk data to source systems and, where appropriate, to accounting data at a defined frequency, and shall record the reference and outcome of each reconciliation. The bank shall designate a single authoritative source for each type of risk data, maintain a data dictionary that defines concepts consistently across the organisation, document all aggregation processes including manual workarounds, and operate escalation channels and remediation plans to address poor data quality.",
+      "rationale": "If risk data is not reconciled to its source and to accounting records, errors accumulate silently. A risk report built on unreconciled data may misstate exposures materially without any signal to senior management. Without a single authoritative source and a consistent data dictionary, the same exposure may be counted differently by different systems, and no version can be confirmed correct.",
+      "governable_because": "A data steward could evidence compliance with this, for a given data element, by showing the reconciliation reference and date of the most recent successful run against the authoritative source, the accuracy rate measured at that point, the escalation record if a threshold was breached, and the catalog entry identifying the authoritative source and the data dictionary definition.",
+      "citations": [
+        {
+          "paragraphs": [36],
+          "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate."
+        },
+        {
+          "paragraphs": [37],
+          "quote": "As a precondition, a bank should have a \"dictionary\" of the concepts used, such that data is defined consistently across an organisation."
+        },
+        {
+          "paragraphs": [40],
+          "quote": "Supervisors expect banks to measure and monitor the accuracy of data and to develop appropriate escalation channels and action plans to be in place to rectify poor data quality."
+        }
+      ],
+      "data_concepts": [
+        {
+          "concept": "single authoritative source per risk type",
+          "as_stated": "A bank should strive towards a single authoritative source for risk data per each type of risk.",
+          "paragraphs": [36]
+        },
+        {
+          "concept": "data dictionary of consistently defined concepts",
+          "as_stated": "a bank should have a \"dictionary\" of the concepts used, such that data is defined consistently across an organisation",
+          "paragraphs": [37]
+        },
+        {
+          "concept": "reconciliation reference to accounting data",
+          "as_stated": "Risk data should be reconciled with bank's sources, including accounting data where appropriate",
+          "paragraphs": [36]
+        }
+      ],
+      "measurable_expectations": [
+        {
+          "dimension": "accuracy",
+          "expectation": "The bank shall measure and monitor the accuracy of each risk data element at a defined frequency, and shall maintain an escalation record and documented action plan for any element whose accuracy falls below the threshold set by the accountable owner.",
+          "evidence": "The data steward shall produce the most recent accuracy measurement result, the date it was produced, and—where the threshold was breached—the escalation ticket reference and the status of the remediation plan.",
+          "threshold": "Set by the accountable senior management function by reference to accounting materiality, consistent with the standard applied to accounting data; any breach triggers mandatory escalation.",
+          "threshold_basis": "Paragraph 40 mandates measurement and escalation but does not set a numerical floor. Paragraph 36(a) requires controls as robust as accounting controls, which are themselves calibrated to materiality. The threshold must therefore be set by the same materiality standard and documented by the owner.",
+          "citation": {
+            "paragraphs": [40],
+            "quote": "Supervisors expect banks to measure and monitor the accuracy of data and to develop appropriate escalation channels and action plans to be in place to rectify poor data quality."
+          }
+        },
+        {
+          "dimension": "consistency",
+          "expectation": "Each risk data element shall be reconciled to its authoritative source system and, where accounting equivalents exist, to accounting data, at a frequency defined by the owning function; the reconciliation reference, date, and pass/fail outcome shall be recorded against the element.",
+          "evidence": "The data steward shall produce the reconciliation reference, the date of the most recent run, the pass/fail result, and the name of the authoritative source system recorded in the catalog.",
+          "threshold": "Set by materiality; unexplained variances above the materiality threshold shall be treated as reconciliation failures requiring escalation.",
+          "threshold_basis": "Paragraph 36(c) requires reconciliation to sources including accounting data. Paragraph 56 (under Principle 7) establishes that accuracy requirements should be analogous to accounting materiality, providing the basis for the threshold. The owning function sets the materiality level.",
+          "citation": {
+            "paragraphs": [36],
+            "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate."
+          }
+        },
+        {
+          "dimension": "validity",
+          "expectation": "Every risk data element used in aggregation shall have an entry in the bank's data dictionary defining it consistently with its usage across all systems; an element not present in the dictionary shall not be used in regulatory or senior management risk reporting.",
+          "evidence": "The data steward shall produce the data dictionary entry for the element, confirming it is current and that the definition matches the element's operational usage in each system where it appears.",
+          "threshold": "Complete coverage of all elements used in risk aggregation; no element may be absent from the dictionary.",
+          "threshold_basis": "Paragraph 37 treats the data dictionary as a precondition for accuracy, not an optional supplement. An undefined element cannot be shown to be consistently interpreted across systems, so any gap undermines the entire accuracy obligation.",
+          "citation": {
+            "paragraphs": [37],
+            "quote": "As a precondition, a bank should have a \"dictionary\" of the concepts used, such that data is defined consistently across an organisation."
+          }
+        }
+      ],
+      "confidence": 0.93
+    },
+    {
+      "ref": "OBL-P04",
+      "principle": 4,
+      "principle_name": "Completeness",
+      "title": "Material Risk Data Completeness and Coverage",
+      "statement": "The bank shall capture and aggregate all material risk exposures across the banking group, including off-balance sheet exposures. Risk data shall be available segmented by business line, legal entity, asset type, industry, region and other groupings relevant to the risk in question. The bank shall measure and monitor the completeness of its risk data, and shall ensure that where risk data is not entirely complete, the gap does not critically impair the bank's ability to manage its risks effectively; all exceptions shall be identified and explained.",
+      "rationale": "A completeness gap that excludes, for example, off-balance sheet exposures or a subsidiary's positions means the aggregated risk figure understates actual exposure. If the gap is not measured and explained, management cannot know whether what they are seeing represents all material risk or only part of it, which may cause them to under-react to a concentration or emerging risk.",
+      "governable_because": "A data steward could evidence compliance with this, for a given data element, by showing a measured completeness rate, a documented assessment of the impact of any gap, and—where the element is expected to carry a business line, legal entity, asset type, industry or region attribute—confirmation that those attributes are populated for all in-scope records.",
+      "citations": [
+        {
+          "paragraphs": [41],
+          "quote": "A bank's risk data aggregation capabilities should include all material risk exposures, including those that are off-balance sheet."
+        },
+        {
+          "paragraphs": [43],
+          "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+        }
+      ],
+      "data_concepts": [
+        {
+          "concept": "off-balance sheet exposures",
+          "as_stated": "all material risk exposures, including those that are off-balance sheet",
+          "paragraphs": [41]
+        },
+        {
+          "concept": "business line dimension",
+          "as_stated": "Data should be available by business line",
+          "paragraphs": [41]
+        },
+        {
+          "concept": "legal entity dimension",
+          "as_stated": "Data should be available by … legal entity",
+          "paragraphs": [41]
+        },
+        {
+          "concept": "asset type dimension",
+          "as_stated": "Data should be available by … asset type",
+          "paragraphs": [41]
+        },
+        {
+          "concept": "industry dimension",
+          "as_stated": "Data should be available by … industry",
+          "paragraphs": [41]
+        },
+        {
+          "concept": "region dimension",
+          "as_stated": "Data should be available by … region",
+          "paragraphs": [41]
+        }
+      ],
+      "measurable_expectations": [
+        {
+          "dimension": "completeness",
+          "expectation": "The bank shall measure the completeness of each risk data element at a defined frequency; where completeness falls below the materially complete threshold, the gap shall be documented with an impact assessment confirming it does not critically impair risk management, and exceptions shall be recorded and explained.",
+          "evidence": "The data steward shall produce the completeness rate measurement and date, the impact assessment for any gap, and the exceptions log with explanations for the reporting period.",
+          "threshold": "Materially complete; exceptions are permitted only where the impact assessment confirms the gap is not critical to the bank's ability to manage its risks effectively.",
+          "threshold_basis": "Paragraph 43 uses the phrase 'materially complete' and requires that any incompleteness must not be 'critical to the bank's ability to manage its risks effectively.' The threshold is therefore not a fixed percentage but a risk-impact judgement made by the accountable risk function.",
+          "citation": {
+            "paragraphs": [43],
+            "quote": "Supervisors expect banks to produce aggregated risk data that is complete and to measure and monitor the completeness of their risk data."
+          }
+        },
+        {
+          "dimension": "completeness",
+          "expectation": "Each risk exposure record shall carry populated values for the aggregation dimensions—business line, legal entity, asset type, industry and region—that are relevant to the risk type of that record; a null or unclassified value in a relevant dimension constitutes a completeness defect.",
+          "evidence": "The data steward shall produce the measured population rate for each required aggregation dimension on the element, and the list of any records with null or unclassified dimension values for the most recent reporting period.",
+          "threshold": "Zero null values in aggregation dimensions for records where that dimension is applicable; exceptions require documented explanation and impact assessment.",
+          "threshold_basis": "The Principle heading and paragraph 41 make aggregation by business line, legal entity, asset type, industry and region a structural requirement, not an analytical preference. A null value in a mandatory dimension means the record cannot be included in the required aggregation slice, which is a completeness failure for that slice.",
+          "citation": {
+            "paragraphs": [41],
+            "quote": "A bank's risk data aggregation capabilities should include all material risk exposures, including those that are off-balance sheet."
+          }
+        }
+      ],
+      "confidence": 0.91
+    },
+    {
+      "ref": "OBL-P05",
+      "principle": 5,
+      "principle_name": "Timeliness",
+      "title": "Risk Data Aggregation Timeliness by Risk Type",
+      "statement": "The bank shall define and document frequency and latency requirements for risk data aggregation for each material risk type, covering both normal and stress/crisis conditions. Systems shall be capable of producing aggregated risk data for critical risks—including aggregated credit exposures to large corporate borrowers, counterparty credit risk exposures, trading exposures and positions, liquidity risk indicators, and time-critical operational risk indicators—rapidly during stress/crisis situations. The bank shall routinely test its ability to meet these timeliness requirements and shall record the results.",
+      "rationale": "A latency requirement that is never tested or measured cannot be relied upon in a crisis. If the bank discovers during a stress event that its systems cannot produce aggregated counterparty credit risk data within the required window, the board and senior management have no basis for action. Undocumented timeliness standards also mean supervisory review has nothing to assess against.",
+      "governable_because": "A data steward could evidence compliance with this, for a given data element, by showing the documented latency requirement for that element under normal and stress/crisis conditions, the most recent test result confirming the requirement was met, and the date of that test.",
+      "citations": [
+        {
+          "paragraphs": [44],
+          "quote": "A bank's risk data aggregation capabilities should ensure that it is able to produce aggregate risk information on a timely basis to meet all risk management reporting requirements."
+        },
+        {
+          "paragraphs": [45],
+          "quote": "Banks need to build their risk systems to be capable of producing aggregated risk data rapidly during times of stress/crisis for all critical risks."
+        },
+        {
+          "paragraphs": [46],
+          "quote": "Critical risks include but are not limited to:\n(a) The aggregated credit exposure to a large corporate borrower."
+        }
+      ],
+      "data_concepts": [
+        {
+          "concept": "aggregated credit exposure to a large corporate borrower",
+          "as_stated": "The aggregated credit exposure to a large corporate borrower",
+          "paragraphs": [46]
+        },
+        {
+          "concept": "counterparty credit risk exposures including derivatives",
+          "as_stated": "Counterparty credit risk exposures, including, for example, derivatives",
+          "paragraphs": [46]
+        },
+        {
+          "concept": "trading exposures, positions and operating limits",
+          "as_stated": "Trading exposures, positions, operating limits, and market concentrations by sector and region data",
+          "paragraphs": [46]
+        },
+        {
+          "concept": "liquidity risk indicators including cash flows and funding",
+          "as_stated": "Liquidity risk indicators such as cash flows/settlements and funding",
+          "paragraphs": [46]
+        },
+        {
+          "concept": "time-critical operational risk indicators",
+          "as_stated": "Operational risk indicators that are time-critical (eg systems availability, unauthorised access)",
+          "paragraphs": [46]
+        }
+      ],
+      "measurable_expectations": [
+        {
+          "dimension": "timeliness",
+          "expectation": "Each risk data element shall have a documented maximum permissible latency for aggregation under both normal and stress/crisis conditions, set by the accountable risk function and approved by senior management; the latency standard shall reflect the nature and volatility of the risk type.",
+          "evidence": "The data steward shall produce the documented latency standard for the element under normal and stress/crisis conditions, the approval record, and the date of last review.",
+          "threshold": "Set by the accountable risk function per risk type; for critical risks, the stress/crisis standard must support rapid production as required by paragraph 45.",
+          "threshold_basis": "Paragraphs 44 and 45 require timeliness to be calibrated to the nature of the risk and the stress/crisis context. No single number applies across all risk types; the standard must be set by the function responsible for each risk category and reflect its volatility characteristics.",
+          "citation": {
+            "paragraphs": [45],
+            "quote": "Banks need to build their risk systems to be capable of producing aggregated risk data rapidly during times of stress/crisis for all critical risks."
+          }
+        },
+        {
+          "dimension": "timeliness",
+          "expectation": "The bank shall routinely test its ability to produce aggregated risk data within the defined latency standard for each critical risk type, particularly under stress/crisis conditions, and shall record the test result, the date, and any breach with its remediation status.",
+          "evidence": "The data steward shall produce the most recent test result for the element's aggregation pipeline, confirming actual latency against the documented standard, and—where a breach occurred—the remediation record.",
+          "threshold": "Actual latency must not exceed the documented standard; a breach requires a recorded remediation action.",
+          "threshold_basis": "Paragraph 47 states that supervisors will review whether bank-specific frequency requirements generate aggregate data in a timely manner. Routine testing is the only mechanism by which the bank can demonstrate this to supervisors and to itself before a crisis occurs.",
+          "citation": {
+            "paragraphs": [44],
+            "quote": "A bank's risk data aggregation capabilities should ensure that it is able to produce aggregate risk information on a timely basis to meet all risk management reporting requirements."
+          }
+        }
+      ],
+      "confidence": 0.89
+    },
+    {
+      "ref": "OBL-P06",
+      "principle": 6,
+      "principle_name": "Adaptability",
+      "title": "Flexible and Adaptable Risk Data Aggregation Capability",
+      "statement": "The bank shall maintain risk data aggregation capabilities that are flexible and adaptable, such that aggregated risk data can be produced for ad hoc and on-demand requests, including requests arising during stress/crisis situations, supervisory queries, and changes in the regulatory framework or the bank's organisational structure. The bank shall be capable of generating subsets of data based on specified scenarios, dates, country lists, industry types and other parameters across all business lines and geographic areas.",
+      "rationale": "A risk aggregation capability that can only answer pre-built queries will fail when a supervisor asks for a cut of data not previously anticipated, or when a new concentration emerges that requires a novel aggregation dimension. The inability to respond rapidly to such requests is itself a risk management deficiency, because the information needed for a decision simply cannot be produced.",
+      "governable_because": "A data steward could evidence compliance with this, for a given data element, by showing that the element carries the classification attributes—such as country, industry type, business line and geographic area—required to support scenario-based subsetting, and that those attributes are populated and governed.",
+      "citations": [
+        {
+          "paragraphs": [48],
+          "quote": "A bank's risk data aggregation capabilities should be flexible and adaptable to meet ad hoc data requests, as needed, and to assess emerging risks."
+        },
+        {
+          "paragraphs": [50],
+          "quote": "Supervisors expect banks to be able to generate subsets of data based on requested scenarios or resulting from economic events."
+        }
+      ],
+      "data_concepts": [
+        {
+          "concept": "country credit exposure classification",
+          "as_stated": "aggregate risk data quickly on country credit exposures as of a specified date based on a list of countries",
+          "paragraphs": [50]
+        },
+        {
+          "concept": "industry credit exposure classification",
+          "as_stated": "industry credit exposures as of a specified date based on a list of industry types across all business lines and geographic areas",
+          "paragraphs": [50]
+        }
+      ],
+      "measurable_expectations": [
+        {
+          "dimension": "completeness",
+          "expectation": "Each risk exposure record shall carry a populated country classification and industry classification, enabling the bank to subset and aggregate exposures by those dimensions as of any specified date; null or unclassified values in these fields constitute a capability defect.",
+          "evidence": "The data steward shall produce the measured population rate for the country and industry classification attributes on the element, and the list of any records with null or unclassified values for the most recent reporting period.",
+          "threshold": "Zero null or unclassified values where the dimension is applicable to the record; exceptions require documented explanation.",
+          "threshold_basis": "Paragraph 50 illustrates the adaptability requirement specifically with country and industry subsetting. A record that cannot be assigned to a country or industry cannot participate in the scenario-based aggregation the Principle requires, making any null an absolute capability gap.",
+          "citation": {
+            "paragraphs": [50],
+            "quote": "Supervisors expect banks to be able to generate subsets of data based on requested scenarios or resulting from economic events."
+          }
+        },
+        {
+          "dimension": "validity",
+          "expectation": "Country and industry classification values on risk exposure records shall conform to the group-approved reference lists; any value not present in the current approved list shall be treated as an invalid classification and flagged for correction.",
+          "evidence": "The data steward shall produce the reference list version applied to the element, the date of last review of that list, and the count and list of records carrying values not present in the current approved list.",
+          "threshold": "Zero records with classification values outside the approved reference list.",
+          "threshold_basis": "Adaptability requires not only that fields are populated but that they carry values the aggregation engine can interpret consistently. A non-standard value cannot be reliably included in or excluded from a scenario subset, defeating the purpose of the classification.",
+          "citation": {
+            "paragraphs": [48],
+            "quote": "A bank's risk data aggregation capabilities should be flexible and adaptable to meet ad hoc data requests, as needed, and to assess emerging risks."
+          }
+        }
+      ],
+      "confidence": 0.82
+    },
+    {
+      "ref": "OBL-P07",
+      "principle": 7,
+      "principle_name": "Accuracy",
+      "title": "Risk Report Accuracy, Validation and Materiality Standards",
+      "statement": "The bank shall maintain defined requirements and processes to reconcile risk management reports to the underlying risk data. The bank shall maintain an inventory of validation rules applied to quantitative information in reports, including explanations of mathematical and logical relationships verified by those rules. The bank shall operate integrated procedures for identifying, reporting and explaining data errors or integrity weaknesses via exceptions reports. Senior management shall establish accuracy and precision requirements for both regular and stress/crisis reporting, calibrated to accounting materiality, and shall document the rationale for those requirements.",
+      "rationale": "A risk report that has not been reconciled to its source data may present figures that diverge from actual positions due to processing errors, stale data or unapplied adjustments. Without a formal validation inventory and an exceptions process, errors may persist across reporting cycles without detection. Without a documented materiality standard, there is no basis for a steward or auditor to assess whether a given discrepancy is acceptable.",
+      "governable_because": "A data steward could evidence compliance with this, for a given data element, by showing the reconciliation reference between the report value and the underlying risk data, the validation rule that governs the element's entry into the report, the documented accuracy threshold set by senior management, and the exceptions log entry for any breach in the current period.",
+      "citations": [
+        {
+          "paragraphs": [53],
+          "quote": "To ensure the accuracy of the reports, a bank should maintain, at a minimum, the following:\n(a) Defined requirements and processes to reconcile reports to risk data;"
+        },
+        {
+          "paragraphs": [55],
+          "quote": "Supervisors expect that a bank's senior management should establish accuracy and precision requirements for both regular and stress/crisis reporting, including critical position and exposure information."
+        },
+        {
+          "paragraphs": [56],
+          "quote": "Supervisors expect banks to consider accuracy requirements analogous to accounting materiality."
+        }
+      ],
+      "data_concepts": [
+        {
+          "concept": "validation rule inventory for quantitative report items",
+          "as_stated": "an inventory of the validation rules that are applied to quantitative information",
+          "paragraphs": [53]
+        },
+        {
+          "concept": "exceptions report for data errors and integrity weaknesses",
+          "as_stated": "Integrated procedures for identifying, reporting and explaining data errors or weaknesses in data integrity via exceptions reports",
+          "paragraphs": [53]
+        },
+        {
+          "concept": "accuracy and precision requirements for critical position and exposure information",
+          "as_stated": "accuracy and precision requirements for both regular and stress/crisis reporting, including critical position and exposure information",
+          "paragraphs": [55]
+        }
+      ],
+      "measurable_expectations": [
+        {
+          "dimension": "accuracy",
+          "expectation": "Each quantitative data element used in a risk management report shall be covered by at least one validation rule recorded in the validation inventory; the inventory entry shall describe the mathematical or logical relationship being verified and the action triggered by a failure.",
+          "evidence": "The data steward shall produce the validation inventory entry for the element, confirming the rule description, the date last reviewed, and the record of the most recent validation run result.",
+          "threshold": "Complete coverage of quantitative report elements in the inventory; no element used in a report may lack a governing validation rule.",
+          "threshold_basis": "Paragraph 53(b) requires the inventory as a minimum component of report accuracy assurance. An element without a rule has no automated check on its correctness and cannot be demonstrated to management or supervisors as validated.",
+          "citation": {
+            "paragraphs": [53],
+            "quote": "To ensure the accuracy of the reports, a bank should maintain, at a minimum, the following:\n(a) Defined requirements and processes to reconcile reports to risk data;"
+          }
+        },
+        {
+          "dimension": "consistency",
+          "expectation": "The value of each quantitative risk data element as it appears in a risk management report shall be reconcilable to its value in the underlying risk data source; the reconciliation reference and result shall be recorded for each reporting cycle.",
+          "evidence": "The data steward shall produce the reconciliation reference linking the report figure to the source data value, the date of the reconciliation, and the pass/fail outcome for the current reporting period.",
+          "threshold": "Set by senior management by reference to accounting materiality; variances exceeding the materiality threshold shall be treated as exceptions requiring investigation and explanation.",
+          "threshold_basis": "Paragraph 56 requires accuracy requirements analogous to accounting materiality. Paragraph 55 places responsibility for setting the standard on senior management. The threshold is therefore a documented management decision, not a fixed number, and must be recorded alongside the reconciliation result.",
+          "citation": {
+            "paragraphs": [56],
+            "quote": "Supervisors expect banks to consider accuracy requirements analogous to accounting materiality."
+          }
+        },
+        {
+          "dimension": "validity",
+          "expectation": "Where a risk data element in a report is derived from an approximation—including model output, scenario analysis or stress test result—the bank shall document the reliability expectation for that approximation, including its accuracy and timeliness standards.",
+          "evidence": "The data steward shall produce the documented reliability expectation for the approximation, the approval record, and the most recent assessment of whether the approximation met that expectation.",
+          "threshold": "Set by senior management per approximation type; the standard must be sufficient for management to rely with confidence on the information for risk decisions.",
+          "threshold_basis": "Paragraph 54 requires banks to establish expectations for the reliability of approximations. The confidence standard is qualitative—'rely with confidence'—and must be defined by the function responsible for each approximation. A steward cannot set this threshold; they can only record and attest that it has been set.",
+          "citation": {
+            "paragraphs": [55],
+            "quote": "Supervisors expect that a bank's senior management should establish accuracy and precision requirements for both regular and stress/crisis reporting, including critical position and exposure information."
+          }
+        }
+      ],
+      "confidence": 0.91
+    },
+    {
+      "ref": "OBL-P08",
+      "principle": 8,
+      "principle_name": "Comprehensiveness",
+      "title": "Risk Report Coverage Dimensions and Concentration Classification",
+      "statement": "The bank shall ensure that risk management reports include exposure and position information covering all significant risk areas, and that the data underlying those reports carries the classification attributes required to support reporting by single name, country and industry sector for credit risk, and by sector and region for market risk. Risk data shall carry classification for risk-related measures including regulatory and economic capital. The bank shall ensure that data supports identification and reporting of risk concentrations, limit utilisation, risk appetite and stress test results.",
+      "rationale": "A risk report that omits an entire risk category—or that cannot break credit risk down by industry sector because that attribute is not carried in the data—fails its purpose even if its figures are accurate. The comprehensiveness obligation is what ensures that the scope of the data is matched to the scope of the risk.",
+      "governable_because": "A data steward could evidence compliance with this, for a given data element, by showing that the element carries the classification attributes—risk type, single name identifier, country, industry sector, region—required for comprehensive reporting, and that those attributes are populated for all in-scope records.",
+      "citations": [
+        {
+          "paragraphs": [57],
+          "quote": "Risk management reports should include exposure and position information for all significant risk areas (eg credit risk, market risk, liquidity risk, operational risk) and all significant components of those risk areas (eg single name, country and industry sector for credit risk)."
+        }
+      ],
+      "data_concepts": [
+        {
+          "concept": "risk type classification for exposures",
+          "as_stated": "all significant risk areas (eg credit risk, market risk, liquidity risk, operational risk)",
+          "paragraphs": [57]
+        },
+        {
+          "concept": "single name classification for credit risk",
+          "as_stated": "all significant components of those risk areas (eg single name, country and industry sector for credit risk)",
+          "paragraphs": [57]
+        },
+        {
+          "concept": "country classification for credit risk",
+          "as_stated": "single name, country and industry sector for credit risk",
+          "paragraphs": [57]
+        },
+        {
+          "concept": "industry sector classification for credit risk",
+          "as_stated": "single name, country and industry sector for credit risk",
+          "paragraphs": [57]
+        },
+        {
+          "concept": "regulatory and economic capital measures",
+          "as_stated": "risk-related measures (eg regulatory and economic capital)",
+          "paragraphs": [57]
+        }
+      ],
+      "measurable_expectations": [
+        {
+          "dimension": "completeness",
+          "expectation": "Each credit risk exposure record shall carry populated values for single name identifier, country and industry sector; each market risk record shall carry populated values for sector and region; null or unclassified values in these dimensions constitute a reporting completeness defect.",
+          "evidence": "The data steward shall produce the measured population rate for each required classification dimension on the element, and the list of records with null or unclassified values for the most recent reporting period.",
+          "threshold": "Zero null or unclassified values where the dimension is applicable; exceptions require documented explanation.",
+          "threshold_basis": "Paragraph 57 makes these classification dimensions mandatory components of comprehensive risk reporting. A record that cannot be assigned to a single name, country or industry sector cannot be included in the corresponding report slice, which is a coverage failure for that dimension.",
+          "citation": {
+            "paragraphs": [57],
+            "quote": "Risk management reports should include exposure and position information for all significant risk areas (eg credit risk, market risk, liquidity risk, operational risk) and all significant components of those risk areas (eg single name, country and industry sector for credit risk)."
+          }
+        },
+        {
+          "dimension": "validity",
+          "expectation": "The risk type classification carried by each exposure record shall conform to the group-approved risk category taxonomy; any record carrying a risk type value not present in the approved taxonomy shall be flagged as invalid.",
+          "evidence": "The data steward shall produce the approved risk category taxonomy version applied to the element, the date of last review, and the count of records carrying out-of-taxonomy values.",
+          "threshold": "Zero records with out-of-taxonomy risk type values.",
+          "threshold_basis": "Comprehensive reporting requires that all significant risk areas are covered without gaps or overlaps in classification. A non-standard risk type value cannot be reliably allocated to the correct report section, creating silent coverage gaps.",
+          "citation": {
+            "paragraphs": [57],
+            "quote": "Risk management reports should include exposure and position information for all significant risk areas (eg credit risk, market risk, liquidity risk, operational risk) and all significant components of those risk areas (eg single name, country and industry sector for credit risk)."
+          }
+        }
+      ],
+      "confidence": 0.85
+    }
+  ],
+  "cross_cutting": [
+    {
+      "ref": "XOB-01",
+      "name": "Risk-to-finance reconciliation",
+      "spans": ["OBL-P03", "OBL-P07"],
+      "statement": "The bank shall maintain a documented reconciliation process that links risk data values as they appear in risk management reports back to their authoritative source and, where an accounting equivalent exists, to the general ledger; the reconciliation reference, frequency, outcome and any unexplained variance shall be recorded against the relevant data element for each reporting cycle.",
+      "why_not_single": "OBL-P03 governs the accuracy and reconciliation of risk data at the point of aggregation—ensuring the data going into a report is correct. OBL-P07 governs the accuracy of the report itself—ensuring the figures in the report match the underlying data. Neither obligation alone closes the full chain from source to report. A bank could satisfy P03 by reconciling its risk data to its source systems while never reconciling the report figures back to that same data, or satisfy P07 by reconciling its report to an intermediate aggregation layer that has itself drifted from the general ledger. Only the combination creates the unbroken audit trail from general ledger to risk report.",
+      "citation": {
+        "paragraphs": [36],
+        "quote": "Risk data should be reconciled with bank's sources, including accounting data where appropriate, to ensure that the risk data is accurate."
+      }
+    },
+    {
+      "ref": "XOB-02",
+      "name": "Consistent counterparty identity across systems",
+      "spans": ["OBL-P02", "OBL-P03", "OBL-P04"],
+      "statement": "The bank shall ensure that every counterparty is represented by a single, consistent identifier across all risk data systems and aggregation layers, such that exposure records for the same counterparty can be linked and summed without ambiguity; any system that introduces a local or alternative identifier shall maintain a validated mapping to the group master identifier.",
+      "why_not_single": "OBL-P02 requires the bank to establish single identifiers and unified naming conventions as an architectural matter. OBL-P03 requires reconciliation of risk data to authoritative sources, which presupposes that the same entity can be recognised in both. OBL-P04 requires complete capture of all material exposures including aggregation by legal entity—which is impossible if the same counterparty appears under different identifiers in different systems and no mapping exists. Each obligation depends on the others: the architecture must establish the identifier (P02), the accuracy controls must verify it survives processing (P03), and the completeness requirement demands that no exposure is lost because the identifier was not recognised (P04). Acting on any one of these alone leaves the cross-system identity problem partially unresolved.",
+      "citation": {
+        "paragraphs": [33],
+        "quote": "A bank should establish integrated data taxonomies and architecture across the banking group, which includes information on the characteristics of the data (metadata), as well as use of single identifiers and/or unified naming conventions for data including legal entities, counterparties, customers and accounts."
+      }
+    },
+    {
+      "ref": "XOB-03",
+      "name": "Stress-scenario data availability across aggregation and reporting",
+      "spans": ["OBL-P05", "OBL-P06", "OBL-P07"],
+      "statement": "The bank shall ensure that the timeliness, adaptability and accuracy standards applied to risk data aggregation and risk reporting are maintained simultaneously under stress/crisis conditions; the bank shall routinely test that it can produce accurate, complete, ad hoc aggregations of critical risk data within the stress/crisis latency standard, and shall record those test results.",
+      "why_not_single": "OBL-P05 requires that aggregation pipelines are fast enough under stress. OBL-P06 requires that they are flexible enough to answer novel queries under stress. OBL-P07 requires that the reports produced under stress are accurate. A bank that meets P05 alone—fast but inflexible—cannot answer a supervisory ad hoc query in a crisis. A bank that meets P06 alone—flexible but slow—cannot produce results within the stress window. A bank that meets P07 alone—accurate in normal conditions—may not have tested whether accuracy is maintained when the pipeline is operating at speed under stress. Paragraph 35 explicitly states that compliance with these Principles should not be at the expense of each other; satisfying all three simultaneously under stress is the obligation that none of them individually states.",
+      "citation": {
+        "paragraphs": [45],
+        "quote": "Banks need to build their risk systems to be capable of producing aggregated risk data rapidly during times of stress/crisis for all critical risks."
+      }
+    }
+  ],
+  "out_of_scope": [
+    {
+      "principles": [1],
+      "topic": "Board and senior management governance of risk data",
+      "why_not_addressable": "Paragraphs 27 through 31 impose obligations on the board and senior management to approve frameworks, deploy resources, understand limitations, and ensure independent validation. None of these is a property of a data element. A data steward cannot evidence board approval of a framework, senior management awareness of aggregation limitations, or the independence of a validation function by inspecting any data element in the catalog. These are organisational and committee-level obligations.",
+      "what_is_needed_instead": "These obligations belong in board-level policy, committee terms of reference, independent validation programme documentation, and IT strategy governance records. They should be tracked by the Chief Risk Officer's governance office and evidenced by board minutes, committee charters and validation reports—not by data catalog attestations.",
+      "related_obligations": ["OBL-P02", "OBL-P03"]
+    },
+    {
+      "principles": [8],
+      "topic": "Report content, coverage scope and forward-looking assessment",
+      "why_not_addressable": "Paragraphs 57 through 60 include obligations about what risk management reports must contain—emerging risk concentrations, limit context, risk appetite framing, stress test results, forward-looking forecasts, and capital adequacy projections. These are obligations about the structure and content of a document delivered to the board and senior management. A data steward cannot evidence, for any data element, that a report includes a forward-looking assessment of risk or that it presents capital and liquidity ratio projections. These are editorial and analytical obligations that belong to the report author and the risk management function, not to a data element owner.",
+      "what_is_needed_instead": "These obligations belong in the risk reporting framework, report templates and content standards maintained by the Chief Risk Officer. Compliance is evidenced by review of the report itself against a content checklist, not by catalog attestation.",
+      "also_obligates": ["OBL-P08"],
+      "related_obligations": ["OBL-P04", "OBL-P07"]
+    },
+    {
+      "principles": [9],
+      "topic": "Report clarity, tailoring to recipients, and inventory of risk data items",
+      "why_not_addressable": "Paragraphs 61 through 69 are almost entirely about how reports communicate—the balance of quantitative and qualitative content, tailoring to different recipient levels, and the board's responsibility to alert management when reports do not meet its needs. These are obligations about document design, editorial judgement and governance dialogue. A data steward cannot evidence, for any data element, that the balance of qualitative versus quantitative information in a report is appropriate, or that the board has confirmed it is receiving the right level of detail. Paragraph 67 requires an inventory and classification of risk data items that includes a reference to concepts used to elaborate the reports; this is a catalog-adjacent obligation but is more specifically a report-design lineage record than a data quality measure.",
+      "what_is_needed_instead": "These obligations belong in report design standards, reporting governance procedures and board feedback processes. Paragraph 67's inventory obligation could be partially addressed through data catalog lineage configuration, but the full obligation—including classification and reference to report concepts—is a report documentation task owned by the risk reporting function.",
+      "related_obligations": ["OBL-P03", "OBL-P08"]
+    },
+    {
+      "principles": [10],
+      "topic": "Frequency of risk report production and distribution",
+      "why_not_addressable": "Paragraphs 70 and 71 require the board and senior management to set reporting frequency requirements, and require the bank to test its ability to produce accurate reports within established timeframes. The setting of frequency is a governance decision made by the board and senior management, not a property of any data element. The test of whether a report can be produced within a timeframe is an operational capability test, not a data quality measure. A data steward cannot attest, for a data element, that the board has set an appropriate frequency requirement.",
+      "what_is_needed_instead": "Frequency standards belong in the risk reporting framework approved by the board. Capability testing belongs in the risk data IT programme and should be evidenced by test records held by the Chief Information Officer or equivalent. The timeliness latency standards in OBL-P05 are the nearest data-policy equivalent and cover the aggregation pipeline side of the same question.",
+      "related_obligations": ["OBL-P05"]
+    },
+    {
+      "principles": [11],
+      "topic": "Distribution of risk reports and confidentiality of recipients",
+      "why_not_addressable": "Paragraphs 72 and 73 require procedures for rapid dissemination of reports to appropriate recipients and periodic confirmation that recipients receive timely reports. These are obligations about a report delivery process and a distribution list—neither of which is a property of a data element. A data steward cannot evidence, for any data element, that the correct recipients received a report on time or that confidentiality was maintained in transmission.",
+      "what_is_needed_instead": "These obligations belong in report distribution procedures, information security policy and access-control governance. Confirmation of timely receipt should be tracked by the risk reporting operations function, not by the data catalog.",
+      "related_obligations": ["OBL-P05"]
+    }
+  ]
+}
+```

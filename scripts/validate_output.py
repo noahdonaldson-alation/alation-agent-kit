@@ -13,6 +13,7 @@ self-inconsistent.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import re
 import sys
@@ -21,6 +22,7 @@ from pathlib import Path
 
 DEFAULT_SCHEMA = "schemas/cde_dq_requirements.schema.json"
 MAPPING_SCHEMA = "schemas/pde_mapping.schema.json"
+OBLIGATION_SCHEMA = "schemas/obligation_register.schema.json"
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -36,12 +38,174 @@ def load_json(text: str):
     return doc
 
 
-def structural_checks(doc: dict) -> list[str]:
+def structural_checks(doc: dict, source: str | None = None) -> list[str]:
     """Rules JSON Schema cannot express. Dispatches on document shape — the
-    pipeline has two contracts and they have different invariants."""
+    pipeline has three contracts and they have different invariants.
+
+    Dispatching matters more than it looks: running the CDE register's checks
+    against an obligation register reported "0 elements at criticality 3" on a
+    perfectly valid document. A false failure is worse than no check, because it
+    teaches you to ignore the check."""
     if "mappings" in doc:
         return mapping_checks(doc)
+    if "obligations" in doc:
+        return obligation_checks(doc, source)
     return register_checks(doc)
+
+
+def _norm_ws(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def iter_quotes(doc: dict):
+    """Every (owner_ref, kind, citation) in an obligation register."""
+    for o in doc.get("obligations") or []:
+        ref = o.get("ref", "?")
+        for c in o.get("citations") or []:
+            yield ref, "citation", c
+        for e in o.get("measurable_expectations") or []:
+            if e.get("citation"):
+                yield ref, f"{e.get('dimension')} expectation", e["citation"]
+    for x in doc.get("cross_cutting") or []:
+        if x.get("citation"):
+            yield x.get("ref", "?"), "cross_cutting", x["citation"]
+
+
+def quote_provenance(doc: dict, source_text: str) -> list[str]:
+    """Check every quotation appears VERBATIM in the source the agent was given.
+
+    This is the check the whole "cited to the regulation" claim rests on, and
+    until now it existed nowhere — the citation audit in authoring.py compares a
+    policy to its register, so a quotation invented at register time is inherited
+    as ground truth by everything downstream.
+
+    Reported as NOT TRACEABLE, never as "fabricated". A mismatch has several
+    causes and only one of them is invention: the model may have joined two
+    non-adjacent sentences, silently skipped a list item, or substituted
+    quotation marks. Naming it "fabricated" claims to know which — and on the
+    first run of this check, every single mismatch turned out to be tidying
+    rather than invention.
+    """
+    problems: list[str] = []
+    src = _norm_ws(source_text)
+
+    paras: dict[int, str] = {}
+    marks = list(re.finditer(r"(?m)^(\d{1,3})\.\s", source_text))
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(source_text)
+        paras[int(m.group(1))] = _norm_ws(source_text[m.end():end])
+
+    for ref, kind, c in iter_quotes(doc):
+        q = _norm_ws(c.get("quote") or "")
+        cited = c.get("paragraphs") or []
+        if not q:
+            problems.append(f"{ref} [{kind}]: empty quote")
+            continue
+        if q not in src:
+            # Locate the longest span that DOES match, so the report says which
+            # end drifted rather than only that something did.
+            sm = difflib.SequenceMatcher(None, q, src, autojunk=False)
+            m = sm.find_longest_match(0, len(q), 0, len(src))
+            pct = 100 * m.size // max(1, len(q))
+            broke = "start" if m.a > 0 else "end"
+            problems.append(
+                f"{ref} [{kind}]: quote NOT TRACEABLE to source "
+                f"({pct}% contiguous, diverges at the {broke}): {q[:70]!r}"
+            )
+            continue
+        where = [p for p, t in paras.items() if q in t]
+        if where and cited and not set(where) & set(cited):
+            problems.append(
+                f"{ref} [{kind}]: quote is in paragraph {where} but cited as {cited}"
+            )
+    return problems
+
+
+def obligation_checks(doc: dict, source: str | None = None) -> list[str]:
+    """Step 1: the obligation register."""
+    problems: list[str] = []
+    obs = doc.get("obligations") or []
+    refs = {o.get("ref") for o in obs}
+
+    if len(refs) != len(obs):
+        problems.append("duplicate obligation refs")
+
+    # The ref encodes its own principle. A disagreement means one of the two was
+    # generated and the other copied, and there is no way to tell which is right.
+    for o in obs:
+        ref, principle = o.get("ref", "?"), o.get("principle")
+        if ref.startswith("OBL-P") and principle is not None:
+            if int(ref[5:]) != principle:
+                problems.append(f"{ref}: ref disagrees with principle {principle}")
+        if not (o.get("governable_because") or "").strip():
+            problems.append(f"{ref}: no governable_because — the procedure's "
+                            "output is missing, so it cannot be shown to have run")
+        for e in o.get("measurable_expectations") or []:
+            if not (e.get("threshold_basis") or "").strip() and e.get("threshold"):
+                problems.append(f"{ref}: a {e.get('dimension')} expectation "
+                                "asserts a threshold with no threshold_basis")
+        # data_concepts are extraction, not inference — a concept with no
+        # as_stated is the CDE-identification step leaking one stage early.
+        for dc in o.get("data_concepts") or []:
+            if not (dc.get("as_stated") or "").strip():
+                problems.append(f"{ref}: data_concept {dc.get('concept')!r} has no "
+                                "as_stated, so it cannot be shown to be in the text")
+
+    # Required coverage: principles 2-8 either produce an obligation or are
+    # explicitly accounted for in out_of_scope.
+    covered = {o.get("principle") for o in obs}
+    excused = {p for e in doc.get("out_of_scope") or [] for p in e.get("principles") or []}
+    for p in range(2, 9):
+        if p not in covered and p not in excused:
+            problems.append(f"principle {p} produces no obligation and is not "
+                            "named in out_of_scope — a silent omission")
+
+    for x in doc.get("cross_cutting") or []:
+        for span in x.get("spans") or []:
+            if span not in refs:
+                problems.append(f"{x.get('ref')}: spans unknown {span}")
+
+    # A principle both governable and partly out of scope must say so.
+    by_ref = {o.get("ref"): o.get("principle") for o in obs}
+    for e in doc.get("out_of_scope") or []:
+        ps = e.get("principles") or []
+        also = e.get("also_obligates") or []
+        for p in ps:
+            if p in covered and not also:
+                problems.append(
+                    f"principle {p} is out_of_scope but also produces an "
+                    "obligation, without also_obligates set"
+                )
+        # also_obligates means "THIS principle is partly governable, and here is
+        # its obligation". It does not mean "here is a related obligation
+        # elsewhere". Run01 under v0.1.1 pointed a principle-9 entry at
+        # OBL-P03, which reads as a cross-reference and quietly turns the field
+        # into two fields with one name — at which point neither the reader nor
+        # the policy author can tell which sense was meant.
+        for ref in also:
+            if ref not in by_ref:
+                problems.append(f"out_of_scope P{ps}: also_obligates {ref}, "
+                                "which is not an obligation in this register")
+            elif by_ref[ref] not in ps:
+                problems.append(
+                    f"out_of_scope P{ps}: also_obligates {ref}, which is for "
+                    f"principle {by_ref[ref]} — also_obligates names THIS "
+                    "principle's own obligation; use related_obligations for "
+                    "a different principle's"
+                )
+        for ref in e.get("related_obligations") or []:
+            if ref not in by_ref:
+                problems.append(f"out_of_scope P{ps}: related_obligations {ref}, "
+                                "which is not an obligation in this register")
+            elif by_ref[ref] in ps:
+                problems.append(
+                    f"out_of_scope P{ps}: related_obligations {ref} is this "
+                    "principle's own obligation — that is also_obligates"
+                )
+
+    if source is not None:
+        problems.extend(quote_provenance(doc, source))
+    return problems
 
 
 def mapping_checks(doc: dict) -> list[str]:
@@ -182,7 +346,23 @@ def main() -> int:
              f"exists because defaulting to the interpreter's schema silently "
              f"reported every mapper run as invalid — a false failure is worse "
              f"than no check, because it teaches you to ignore the check.")
+    ap.add_argument(
+        "--source", default=None,
+        help="The text the agent was given, e.g. "
+             "artifacts/bcbs239/bank_principles.txt. Obligation registers only. "
+             "When supplied, every quotation is checked to appear VERBATIM in "
+             "it. Nothing else in the pipeline verifies this: authoring.py's "
+             "audit compares a policy to its register, so a quotation that drifts "
+             "at register time is inherited downstream as ground truth.")
     args = ap.parse_args()
+
+    source_text = None
+    if args.source:
+        sp = Path(args.source)
+        if not sp.is_file():
+            print(f"ERROR: --source {args.source} not found")
+            return 2
+        source_text = sp.read_text(encoding="utf-8")
 
     import jsonschema
 
@@ -195,6 +375,8 @@ def main() -> int:
             path = args.schema
         elif isinstance(doc, dict) and "mappings" in doc:
             path = MAPPING_SCHEMA
+        elif isinstance(doc, dict) and "obligations" in doc:
+            path = OBLIGATION_SCHEMA
         else:
             path = DEFAULT_SCHEMA
         if path not in _cache:
@@ -216,7 +398,7 @@ def main() -> int:
 
         schema_path, validator = validator_for(doc)
         errs = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
-        struct = structural_checks(doc)
+        struct = structural_checks(doc, source_text)
 
         # Describe whichever contract this document is, not whichever one the
         # register happens to use.
@@ -226,6 +408,17 @@ def main() -> int:
                        f"({counts.get('mapped', 0)} mapped, "
                        f"{counts.get('partial', 0)} partial, "
                        f"{counts.get('not_found', 0)} not found)")
+        elif "obligations" in doc:
+            quotes = list(iter_quotes(doc))
+            traced = ""
+            if source_text is not None:
+                src = _norm_ws(source_text)
+                hit = sum(1 for _, _, c in quotes
+                          if _norm_ws(c.get("quote") or "") in src)
+                traced = f", {hit}/{len(quotes)} quotes traceable"
+            summary = (f"{len(doc.get('obligations') or [])} obligations "
+                       f"(P{','.join(str(o.get('principle')) for o in doc['obligations'])}), "
+                       f"{len(doc.get('cross_cutting') or [])} cross-cutting{traced}")
         else:
             summary = (f"{len(doc.get('cde_candidates') or [])} CDEs, "
                        f"{len(doc.get('cross_cutting_dq') or [])} cross-cutting")

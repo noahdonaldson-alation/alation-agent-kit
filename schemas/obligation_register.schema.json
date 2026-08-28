@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alation.example/schemas/obligation_register.schema.json",
+  "title": "Obligation register",
+  "description": "Output contract for bcbs239_obligation_interpreter. UNVERIFIED at time of writing — no run has been validated against it yet, unlike cde_dq_requirements.schema.json which was written from real output. Expect to loosen something on the first run; loosen it here rather than in the prompt, and record what moved. The register's job is to be the ONLY citation pool for policy_author: a paragraph or quotation absent from here cannot legitimately be cited by anything downstream, because policy_author is forbidden from quoting the regulation from memory.",
+  "type": "object",
+  "required": ["regulation", "obligations", "cross_cutting", "out_of_scope"],
+  "additionalProperties": false,
+  "properties": {
+    "$comment": {"type": "string"},
+
+    "regulation": {
+      "type": "object",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "publisher": {"type": "string"},
+        "published": {"type": "string"},
+        "source_url": {"type": "string"},
+        "scope_note": {"type": "string"}
+      }
+    },
+
+    "objectives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["objective"],
+        "additionalProperties": false,
+        "properties": {
+          "objective": {"type": "string"},
+          "paragraphs": {"$ref": "#/$defs/paragraphs"}
+        }
+      }
+    },
+
+    "obligations": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 11,
+      "description": "One per governable principle. Expect ~7 (principles 2-8). The bounds are wide on purpose: this schema should catch a structurally broken run, not enforce a coverage judgement. Coverage is measured across runs, not asserted on one.",
+      "items": {
+        "type": "object",
+        "required": ["ref", "principle", "title", "statement", "citations", "measurable_expectations"],
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^OBL-P(0[1-9]|1[01])$",
+            "description": "OBL-P plus the two-digit principle number. Deterministic so that run-to-run stability is a set comparison rather than a name-matching heuristic — the heuristic in scripts/compare_runs.py produced a false 'missing from 1 of 10 runs' finding once already."
+          },
+          "principle": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 11,
+            "description": "Bank-facing principles only. 12-14 address supervisors and are out of scope by definition, not by judgement."
+          },
+          "principle_name": {"type": "string"},
+          "title": {
+            "type": "string",
+            "minLength": 8,
+            "description": "Noun phrase; becomes the business policy title. Carries NO regulation-id prefix — the deploying kit adds the namespace prefix, and a doubled prefix breaks id recovery, which searches on the namespaced title."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 80,
+            "description": "The obligation in 'shall' form. This becomes the policy body, which is the ONLY thing Critical Data Manager reads when deriving the standard's requirements. Vagueness here is unrecoverable downstream."
+          },
+          "rationale": {"type": "string"},
+          "governable_because": {
+            "type": "string",
+            "description": "The completed sentence from step 2 of the prompt's procedure. Its purpose is to make 'did the model run the procedure or judge by feel' checkable by a reviewer."
+          },
+          "citations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"$ref": "#/$defs/citation"}
+          },
+          "data_concepts": {
+            "type": "array",
+            "description": "Data the regulation itself names. NOT critical data elements — no refs, no criticality, no ranking. The extraction/inference boundary is enforced by as_stated: a concept whose framing is not in the source text is inference that leaked through.",
+            "items": {
+              "type": "object",
+              "required": ["concept"],
+              "additionalProperties": false,
+              "properties": {
+                "concept": {"type": "string"},
+                "as_stated": {
+                  "type": "string",
+                  "description": "The text's own words. This is what the later CDE-identification step anchors against."
+                },
+                "paragraphs": {"$ref": "#/$defs/paragraphs"}
+              }
+            }
+          },
+          "measurable_expectations": {
+            "type": "array",
+            "minItems": 1,
+            "description": "The regulation's quality language, phrased as obligations on the bank. This is the material CDM derives requirements from; anything omitted here does not reach the policy body and therefore does not exist downstream.",
+            "items": {"$ref": "#/$defs/expectation"}
+          },
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+
+    "cross_cutting": {
+      "type": "array",
+      "minItems": 2,
+      "description": "Obligations spanning several principles that cannot be satisfied by acting on any one of them. Mandatory with a floor of 2 because omission was the single most common failure in the sibling prompt — 3 of 8 runs dropped the equivalent section entirely before it was declared mandatory.",
+      "items": {
+        "type": "object",
+        "required": ["ref", "name", "spans", "statement"],
+        "additionalProperties": false,
+        "properties": {
+          "ref": {"type": "string", "pattern": "^XOB-[0-9]{2}$"},
+          "name": {"type": "string"},
+          "spans": {
+            "type": "array",
+            "minItems": 2,
+            "items": {"type": "string", "pattern": "^OBL-P(0[1-9]|1[01])$"},
+            "description": "Refs of the obligations spanned. Not validated as existing by this schema — check referential integrity in scripts/validate_output.py, where a pointer to a missing obligation is a structural error rather than a shape error."
+          },
+          "statement": {"type": "string", "minLength": 40},
+          "why_not_single": {"type": "string"},
+          "citation": {"$ref": "#/$defs/citation"}
+        }
+      }
+    },
+
+    "out_of_scope": {
+      "type": "array",
+      "minItems": 1,
+      "description": "What a data catalog cannot deliver. Mandatory: stating this plainly is what makes the rest of the register trustworthy, and it is also where the prompt's step-3 judgements become auditable.",
+      "items": {
+        "type": "object",
+        "required": ["principles", "topic", "why_not_addressable"],
+        "additionalProperties": false,
+        "properties": {
+          "principles": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "integer", "minimum": 1, "maximum": 11}
+          },
+          "topic": {"type": "string"},
+          "why_not_addressable": {"type": "string"},
+          "what_is_needed_instead": {"type": "string"},
+          "also_obligates": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^OBL-P(0[1-9]|1[01])$"},
+            "description": "SELF-REFERENTIAL. Set where a principle is BOTH governable and partly out of scope — Principle 8 names a required reporting dimension while its report-content obligations are unaddressable. Every ref here must be the obligation for a principle named in this entry's own `principles`; validate_output.py enforces that. Use `related_obligations` for a pointer to a different principle's obligation."
+          },
+          "related_obligations": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^OBL-P(0[1-9]|1[01])$"},
+            "description": "CROSS-REFERENTIAL, and added in v0.1.2 because the model kept expressing this through `also_obligates` — a principle-10 entry pointing at OBL-P05, a principle-9 entry pointing at OBL-P03. That is real and useful information (frequency is out of scope, but timeliness covers the adjacent ground) with nowhere to live, so it colonised the nearest field and quietly turned one name into two meanings. Giving it its own key is cheaper than instructing the model not to say something true."
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "paragraphs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "integer", "minimum": 1},
+      "description": "Paragraph numbers, never page numbers — paragraph numbering is stable across BCBS reprints and pagination is not."
+    },
+    "citation": {
+      "type": "object",
+      "required": ["paragraphs", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "paragraphs": {"$ref": "#/$defs/paragraphs"},
+        "quote": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 600,
+          "description": "Verbatim, one complete sentence. The prompt asks for <=450 chars; the ceiling here is 600 so that an honest slightly-long sentence validates rather than failing the whole run. Truncating mid-sentence to hit a limit produces weaker evidence than a slightly longer quote."
+        }
+      }
+    },
+    "expectation": {
+      "type": "object",
+      "required": ["dimension", "expectation", "evidence", "citation"],
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": ["accuracy", "completeness", "validity", "uniqueness", "consistency", "timeliness"],
+          "description": "Fixed vocabulary — these map to the catalog's native monitoring categories, so a synonym silently fails to bind later."
+        },
+        "expectation": {
+          "type": "string",
+          "minLength": 30,
+          "description": "Phrased as an obligation on the bank, not as a monitor on a column. 'Every exposure record shall carry a resolvable counterparty identifier', not 'count of null counterparty IDs'. The difference matters because this becomes policy prose."
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 20,
+          "description": "What a steward must be able to produce. This is the explicit bridge to a CDM attestation field — the more concrete it is, the more derivable the requirement."
+        },
+        "threshold": {"type": "string"},
+        "threshold_basis": {
+          "type": "string",
+          "description": "Why that threshold. Zero is correct for identifier integrity; para 56 permits a materiality tolerance for reconciliation and valuation, and that basis must be stated rather than a number asserted."
+        },
+        "citation": {"$ref": "#/$defs/citation"}
+      }
+    }
+  }
+}
