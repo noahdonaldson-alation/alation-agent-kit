@@ -1,0 +1,116 @@
+name: policy_body_author
+purpose: >
+  Step 2 of the revised BCBS 239 pipeline. Takes an obligation register and
+  writes the BODY PROSE of one business policy per obligation, plus pointers to
+  the quotations that should be cited. Writes no quotation text, no HTML, no
+  refs, no titles and no standards — code assembles all of those around the
+  prose.
+
+  Replaces policy_author for the obligation path. policy_author stays for the
+  CDE-register path and is not modified.
+
+target_agent: policy_body_author
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+
+deploy_variables: {}
+
+output:
+  format: json
+  schema: schemas/policy_body.schema.json
+  # Do NOT set output_json_schema on the agent — it fights the prompt's own
+  # format instructions, same as every other agent in this kit.
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  type: string
+  produced_by: bcbs239_obligation_interpreter -> docs/runs/obl-v0.1.2/*.json
+  chunking: none — the whole register in one call
+  rationale: >
+    One call for all seven obligations rather than seven calls. Two reasons.
+    Cross-policy consistency is only possible with every obligation in view — the
+    register reuses quotations across obligations, and cross_cutting entries span
+    several, so a per-obligation call would either repeat the same sentence in
+    three policies or drop the cross-cutting substance entirely (the mapper's
+    sharding analysis reached the same conclusion for the same reason). And it is
+    7x cheaper in ACU.
+
+agent_config:
+  tools: []          # pure composition — nothing to look up
+  mode: tool_call
+
+changelog:
+  - version: 0.1.0
+    date: 2026-08-28
+    note: >
+      New agent. Implements the v0.3.0 design PROPOSED in
+      policy_author.meta.yaml on 2026-08-27 and never built: quote by reference,
+      not by transcription.
+
+      WHY IT IS A NEW AGENT rather than policy_author v0.3.0. Three things
+      changed at once and the old contract survives none of them:
+        1. Input is an obligation register, not a CDE register.
+        2. Output is prose plus pointers, not a finished policy spec.
+        3. It emits no `standards`. Alation's Critical Data Manager generates the
+           overlay standard from the policy's own prose, so a standard authored
+           here would bypass the generation that makes it worth having.
+      policy_author is left untouched at v0.2.0 for the CDE-register path.
+
+      WHAT THIS DESIGN BUYS, and it is the whole point: policy_author v0.2.0 had
+      a measured defect — 4 quotations not traceable to the register on its first
+      run, all 4 verbatim-correct BCBS 239 text recalled from training rather
+      than read from the input. Instruction reduced that to 2 and could not
+      eliminate it, because telling a model not to use what it knows competes
+      with how strongly it knows it. The obligation interpreter hit the same wall
+      from the other side (v0.1.0 -> v0.1.1, tidied quotations).
+      Here the model never handles quotation text at all. It emits
+      `{"from": "citations", "index": 0}` and code substitutes the register's
+      exact string. A quotation cannot be untraceable BY CONSTRUCTION rather than
+      by instruction, which is the difference between a guarantee and a request.
+
+      SECOND THING IT BUYS, unplanned but real: policy_author was unreliable at
+      N=1 on policy COUNT — 7 policies one run, 6 the next, identical inputs —
+      because it derived the grouping itself from `driven_by` principles. Here
+      the grouping is given: one policy per obligation, and the register's
+      obligation set is stable at 100% across 4 runs. The count is no longer a
+      judgement, so it can no longer vary. Watch for the model dropping or
+      merging an entry anyway; the assembly step must refuse rather than proceed.
+
+      WHAT IS DELIBERATELY NOT ASKED FOR:
+        - Titles. The obligation's own `title` is reused. Titles vary in wording
+          run to run (measured across 4 obligation-register runs, all 7 varied),
+          and asking a second model to rewrite them would add variance to a field
+          that policies.py searches on to recover ids after the async bulk create.
+        - Refs. Derived from the obligation ref in code.
+        - `derived_from.paragraphs`. Computed as the union of the paragraphs on
+          the citations actually selected, so the citation list and the paragraph
+          list cannot disagree.
+        - Counts or summaries. Five confirmed occurrences of a model in this
+          pipeline miscounting its own rows.
+
+      THE LOAD-BEARING INSTRUCTION is the explanation of where the prose goes:
+      CDM reads the policy body and nothing else when deriving the standard's
+      requirements. A vague body does not produce a vague standard, it produces
+      an empty one. The prompt states that up front because the model writes
+      differently when it knows the prose is machine-read rather than
+      human-read.
+
+      UNVERIFIED: not deployed, not run. No claim here above this line is a
+      measurement.
+
+      HOW TO MEASURE, once run:
+        - Does every obligation get exactly one policy? (should be structural)
+        - Do any `body_paragraphs` contain a register `quote` substring? That is
+          the failure this design exists to make impossible; if it appears, the
+          model has quoted despite having no reason to, and the assembly step
+          should strip it rather than the prompt asking again.
+        - Body length per policy, and whether every measurable_expectation's
+          dimension word survives into the prose. That is the CDM-derivability
+          proxy and it is the number that actually matters.
+        - Real test, and it needs the UI: create one policy from this output,
+          point CDM at it, and read what it derives. Nothing before that is
+          evidence.

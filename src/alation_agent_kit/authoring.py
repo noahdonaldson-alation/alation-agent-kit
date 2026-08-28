@@ -30,6 +30,7 @@ different claims and only the first is one we can actually support.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import re
 from pathlib import Path
@@ -58,7 +59,19 @@ def _plain(html: str) -> str:
 
 
 def register_facts(register: dict) -> dict:
-    """The citable universe: which paragraphs and quotes the register supports."""
+    """The citable universe: which paragraphs and quotes the register supports.
+
+    Reads EITHER register shape. The CDE register keys citations under
+    `cde_candidates[].driven_by[]`; the obligation register keys them under
+    `obligations[].citations[]` and `obligations[].measurable_expectations[]`.
+    Both feed the same downstream checks, and teaching this one function both
+    shapes is what lets `audit` and `render_for_review` work unchanged on either
+    path — the alternative was a second review command, which would have meant
+    two places to keep the citation rules correct.
+    """
+    if register.get("obligations"):
+        return _obligation_register_facts(register)
+
     by_principle: dict[int, set[int]] = {}
     dq_paragraphs: set[int] = set()
     quotes: list[str] = []
@@ -78,6 +91,47 @@ def register_facts(register: dict) -> dict:
             for n in re.findall(r"\d+", str(r.get("citation") or "")):
                 dq_paragraphs.add(int(n))
     all_paras = {n for s in by_principle.values() for n in s} | dq_paragraphs
+    return {"paragraphs_by_principle": by_principle,
+            "all_paragraphs": all_paras,
+            "quotes": quotes}
+
+
+def _obligation_register_facts(register: dict) -> dict:
+    """`register_facts` for the obligation register shape.
+
+    One obligation per principle, so `paragraphs_by_principle` is built from the
+    obligation's own citations plus the citations on its measurable expectations.
+    Cross-cutting quotations go into the quote pool but belong to no single
+    principle, so they are added to `all_paragraphs` only — a policy citing a
+    paragraph that only reached the register via a cross-cutting entry is
+    legitimate, and attributing it to one principle would be a guess.
+    """
+    by_principle: dict[int, set[int]] = {}
+    quotes: list[str] = []
+    extra: set[int] = set()
+
+    def take(cit: dict, principle: int | None) -> None:
+        if not cit:
+            return
+        paras = {p for p in (cit.get("paragraphs") or []) if isinstance(p, int)}
+        if isinstance(principle, int):
+            by_principle.setdefault(principle, set()).update(paras)
+        else:
+            extra.update(paras)
+        if cit.get("quote"):
+            quotes.append(_plain(cit["quote"]))
+
+    for o in register.get("obligations") or []:
+        principle = o.get("principle")
+        for c in o.get("citations") or []:
+            take(c, principle)
+        for e in o.get("measurable_expectations") or []:
+            take(e.get("citation") or {}, principle)
+
+    for x in register.get("cross_cutting") or []:
+        take(x.get("citation") or {}, None)
+
+    all_paras = {n for s in by_principle.values() for n in s} | extra
     return {"paragraphs_by_principle": by_principle,
             "all_paragraphs": all_paras,
             "quotes": quotes}
@@ -139,9 +193,16 @@ def audit(spec: dict, register: dict,
     reg_quotes = facts["quotes"]
 
     driven = set(paras_by_p)
+    # The two register shapes name this field differently — `also_drives_cde` on
+    # a CDE register, `also_obligates` on an obligation register — and they mean
+    # the same thing: this principle is partly out of scope AND still produces
+    # something. Checking only the CDE name reported a correct P8 policy as one
+    # that should not exist, which is the cries-wolf failure this module has
+    # already been bitten by once.
+    overlap_keys = ("also_drives_cde", "also_obligates")
     out_of_scope_only: set[int] = set()
     for entry in register.get("out_of_scope") or []:
-        if not entry.get("also_drives_cde"):
+        if not any(entry.get(k) for k in overlap_keys):
             out_of_scope_only.update(
                 p for p in (entry.get("principles") or []) if isinstance(p, int))
 
@@ -166,7 +227,7 @@ def audit(spec: dict, register: dict,
         if principle in out_of_scope_only:
             problems.append(
                 f"{ref}: principle {principle} is out_of_scope without "
-                f"also_drives_cde, so it should not have a policy")
+                f"also_drives_cde/also_obligates, so it should not have a policy")
 
         # Paragraph citations must exist in the register — generated specs only.
         if strict_citations:
@@ -551,3 +612,275 @@ def authoring_instruction(register: dict) -> str:
         f"\n"
         f"REGISTER:\n"
     )
+
+
+# ---------------------------------------------------------------------------
+# Obligation path: assembling a policy spec from prose + citation POINTERS.
+#
+# This is the half of the v0.3.0 design that lives in code. policy_body_author
+# emits paragraphs and `{"from": "citations", "index": 0}`; everything exact —
+# the quotation text, the paragraph numbers, the refs, the HTML — is produced
+# here. The model never touches a quotation, so a citation cannot drift from its
+# source by construction rather than by instruction.
+#
+# The division is the project convention applied literally: judgement (which
+# quotation supports this obligation, how to phrase the obligation) to the
+# agent; actions that must be exact (reproducing text, computing a union of
+# paragraph numbers, escaping markup) to Python.
+# ---------------------------------------------------------------------------
+
+# Non-ASCII that can legitimately appear in prose, mapped to the entities the
+# Policy Center descriptions use. The source text is normalised to ASCII by
+# scripts/extract_bcbs239.py, so this is a belt-and-braces pass for characters a
+# model introduces in its OWN prose (em dashes, curly apostrophes) rather than in
+# a quotation.
+_TO_ENTITY = {
+    "—": "&mdash;", "–": "&ndash;", "¶": "&para;",
+    "’": "&rsquo;", "‘": "&lsquo;", "“": "&ldquo;", "”": "&rdquo;",
+    "…": "&hellip;", " ": "&nbsp;",
+}
+
+
+def _html_text(text: str) -> str:
+    """Escape a plain-text run for embedding in an HTML description.
+
+    Order matters: `&` first, or the entities introduced below get re-escaped
+    into `&amp;mdash;`.
+    """
+    # `"` must be escaped, not just the angle brackets. A quotation block wraps
+    # its text in literal double quotes, and the register contains at least one
+    # sentence with an embedded pair — para 37's `a "dictionary" of the concepts
+    # used`. Left raw, that produces nested quotes in the rendered description
+    # AND truncates verify_quotes_against_register's own extraction at the inner
+    # quote, which reports a correctly-copied citation as not present in the
+    # register. `_plain` maps &quot; back, so comparison is unaffected.
+    out = ((text or "").replace("&", "&amp;").replace("<", "&lt;")
+           .replace(">", "&gt;").replace('"', "&quot;"))
+    for char, ent in _TO_ENTITY.items():
+        out = out.replace(char, ent)
+    # Anything still non-ASCII would reach Policy Center as a raw byte in HTML.
+    # Numeric-escape rather than drop it: losing a character silently is worse
+    # than an ugly entity, and this should be empty in practice.
+    return "".join(c if ord(c) < 128 else f"&#{ord(c)};" for c in out)
+
+
+def _para_label(paragraphs: list[int]) -> str:
+    """`[36]` -> '36'; `[44, 45, 46]` -> '44&ndash;46'; `[33, 40]` -> '33, 40'."""
+    ps = sorted({int(p) for p in paragraphs or []})
+    if not ps:
+        return "?"
+    if len(ps) > 2 and ps == list(range(ps[0], ps[-1] + 1)):
+        return f"{ps[0]}&ndash;{ps[-1]}"
+    return ", ".join(str(p) for p in ps)
+
+
+def resolve_citations(obligation: dict, cite: list[dict]) -> tuple[list[dict], list[str]]:
+    """Turn pointers into the register's exact citations, deduplicated.
+
+    Returns (citations, problems). A pointer that does not resolve is a PROBLEM,
+    never a silent skip: dropping it would leave a policy with less audit trail
+    than its author intended, and nothing downstream would show that anything
+    had gone missing.
+
+    Deduplication is by normalised quote text, keeping first occurrence. The
+    register genuinely reuses quotations — an obligation's `citations[0]` is
+    often the same sentence as one of its expectations' citations — so pointing
+    at both is reasonable behaviour that should cost nothing rather than produce
+    the same paragraph twice in one description.
+    """
+    problems: list[str] = []
+    out: list[dict] = []
+    seen: set[str] = set()
+    ref = obligation.get("ref", "?")
+
+    for ptr in cite or []:
+        src, idx = ptr.get("from"), ptr.get("index")
+        if src == "citations":
+            arr = obligation.get("citations") or []
+            item = arr[idx] if isinstance(idx, int) and 0 <= idx < len(arr) else None
+        elif src == "measurable_expectations":
+            arr = obligation.get("measurable_expectations") or []
+            exp = arr[idx] if isinstance(idx, int) and 0 <= idx < len(arr) else None
+            item = (exp or {}).get("citation")
+        else:
+            problems.append(f"{ref}: cite.from={src!r} is not a known array")
+            continue
+
+        if not item or not item.get("quote"):
+            problems.append(
+                f"{ref}: cite {{from: {src}, index: {idx}}} does not resolve "
+                f"(array has {len(arr)} entr{'y' if len(arr) == 1 else 'ies'})")
+            continue
+
+        key = " ".join((item.get("quote") or "").split()).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"paragraphs": item.get("paragraphs") or [],
+                    "quote": item["quote"]})
+
+    if not out:
+        problems.append(f"{ref}: no citation resolved — a policy description "
+                        f"without a quotation cannot be audited to its source")
+    return out, problems
+
+
+def build_description(obligation: dict, body_paragraphs: list[str],
+                      citations: list[dict]) -> str:
+    """Compose the Policy Center HTML description.
+
+    Shape matches the hand-authored policies/bcbs239.json, which is the spec
+    verified to create four policies and four published standards on a live
+    instance: a bolded principle lead-in, the body, then one block per quotation.
+
+    The quotation text is inserted VERBATIM from the register and is the only
+    part of this string not written by a model.
+    """
+    name = obligation.get("principle_name") or ""
+    lead = f"Principle {obligation.get('principle')}"
+    if name:
+        lead = f"{lead} &mdash; {_html_text(name)}"
+
+    paras = [p for p in (body_paragraphs or []) if (p or "").strip()]
+    blocks: list[str] = []
+    if paras:
+        blocks.append(f"<p><strong>{lead}.</strong> {_html_text(paras[0])}</p>")
+        blocks.extend(f"<p>{_html_text(p)}</p>" for p in paras[1:])
+    else:
+        blocks.append(f"<p><strong>{lead}.</strong></p>")
+
+    for c in citations:
+        label = _para_label(c["paragraphs"])
+        blocks.append(f'<p><em>&para;{label}:</em> "{_html_text(c["quote"])}"</p>')
+    return "".join(blocks)
+
+
+def assemble_policy_spec(register: dict, bodies: dict, *,
+                         register_sha: str = "", prompt_sha: str = "",
+                         by: str = "policy_body_author") -> tuple[dict, list[str]]:
+    """Obligation register + policy_body_author output -> a provisionable spec.
+
+    Refuses rather than proceeds on any 1:1 violation. policy_author's measured
+    instability was in policy COUNT (7 one run, 6 the next), and the whole point
+    of driving the count from the register is that it can no longer vary — so a
+    mismatch here means the model dropped, merged or invented an entry, and
+    quietly provisioning six policies for seven obligations is the exact failure
+    this design was built to remove.
+
+    Emits NO `standards`. Alation's Critical Data Manager generates the overlay
+    standard from the policy's own prose; a standard authored here would bypass
+    that generation. `policies.py:plan()` already guards standards with
+    `if spec.get("standards")`, so their absence needs no change there.
+    """
+    problems: list[str] = []
+    obligations = register.get("obligations") or []
+    by_ref = {o.get("ref"): o for o in obligations}
+    entries = bodies.get("policies") or []
+
+    seen_refs = [e.get("ref") for e in entries]
+    dupes = {r for r in seen_refs if seen_refs.count(r) > 1}
+    if dupes:
+        problems.append(f"duplicate refs in the body draft: {sorted(dupes)}")
+    missing = [r for r in by_ref if r not in seen_refs]
+    if missing:
+        problems.append(f"no policy body for {sorted(missing)} — the register "
+                        f"has {len(by_ref)} obligations, the draft has "
+                        f"{len(entries)} entries")
+    extra = [r for r in seen_refs if r not in by_ref]
+    if extra:
+        problems.append(f"policy body for {sorted(set(extra))}, which is not an "
+                        f"obligation in this register")
+
+    reg = register.get("regulation") or {}
+    reg_id = reg.get("id") or "REG"
+    spec: dict[str, Any] = {
+        "regulation": {k: v for k, v in reg.items()
+                       if k in {"id", "title", "publisher", "published", "source_url"}},
+        "policy_group": {
+            "ref": f"PG-{reg_id}",
+            "title": reg.get("title_short") or reg_id,
+            "$comment": "PREREQUISITE. Policy groups have no create API — this "
+                        "is resolved by title and never created.",
+        },
+        "policies": [],
+        "generated": {
+            "by": by,
+            "at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+            "register_sha": register_sha,
+            "prompt_sha": prompt_sha,
+            # The kit NEVER sets this true. `policy apply` refuses an unreviewed
+            # spec, and that gate is the only thing standing between a model's
+            # output and writes into a customer's Policy Center.
+            "reviewed": False,
+        },
+    }
+
+    # Register order, not draft order: the register is the authority on which
+    # obligations exist and in what sequence.
+    drafts = {e.get("ref"): e for e in entries}
+    for o in obligations:
+        ref = o.get("ref")
+        draft = drafts.get(ref)
+        if not draft:
+            continue
+        citations, probs = resolve_citations(o, draft.get("cite") or [])
+        problems.extend(probs)
+
+        paragraphs = sorted({p for c in citations for p in (c["paragraphs"] or [])})
+        if not paragraphs:
+            problems.append(f"{ref}: no paragraph numbers on any resolved citation")
+
+        title = (o.get("title") or "").strip()
+        if len(title) < 8:
+            problems.append(f"{ref}: obligation title {title!r} is too short to "
+                            f"be a policy title")
+
+        spec["policies"].append({
+            # POL- rather than OBL-, because the ref namespace belongs to the
+            # spec and the state file, not to the register it came from.
+            "ref": f"POL-P{int(o.get('principle')):02d}",
+            "title": title,
+            "derived_from": {"principle": o.get("principle"),
+                             "paragraphs": paragraphs},
+            "description": build_description(o, draft.get("body_paragraphs") or [],
+                                             citations),
+        })
+
+    for p in spec["policies"]:
+        if len(p["description"]) < 200:
+            problems.append(f"{p['ref']}: description is {len(p['description'])} "
+                            f"chars; the spec schema requires 200")
+
+    return spec, problems
+
+
+def verify_quotes_against_register(spec: dict, register: dict) -> list[str]:
+    """Every quotation in the assembled spec appears verbatim in the register.
+
+    Should be vacuously true — the quotations were copied out of the register a
+    few lines above. It is checked anyway because it is nearly free and because
+    it is the claim the whole demo rests on; an assertion that cannot fail is
+    still worth making when the alternative is trusting that it cannot.
+    """
+    pool = set()
+    for o in register.get("obligations") or []:
+        for c in o.get("citations") or []:
+            pool.add(" ".join((c.get("quote") or "").split()))
+        for e in o.get("measurable_expectations") or []:
+            q = (e.get("citation") or {}).get("quote")
+            if q:
+                pool.add(" ".join(q.split()))
+    for x in register.get("cross_cutting") or []:
+        q = (x.get("citation") or {}).get("quote")
+        if q:
+            pool.add(" ".join(q.split()))
+
+    problems: list[str] = []
+    for p in spec.get("policies") or []:
+        for quoted in re.findall(r'<em>&para;[^<]*</em>\s*"([^"]+)"',
+                                 p.get("description") or ""):
+            plain = " ".join(_plain(quoted).split())
+            if not any(plain == " ".join(_plain(q).split()) for q in pool):
+                problems.append(f"{p['ref']}: quoted text is not in the register: "
+                                f"{plain[:70]!r}")
+    return problems

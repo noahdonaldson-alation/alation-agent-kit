@@ -159,8 +159,50 @@ independent walls:
 1. `Update a Catalog Object` has a closed otype enum — `schema, table, column,
    bi_*` — with no `business_policy`.
 2. `POST` **and** `PUT /integration/v1/business_policies/` take a bare **array**,
-   while HTTP tool bodies are objects only (`HTTPConfigCreate` is
-   `additionalProperties: false`, no body templating).
+   while an HTTP tool's body can only ever be a JSON **object**. Two independent
+   reasons, and the second is now proven by execution rather than inferred:
+   * `HTTPConfigCreate` is `additionalProperties: false` with only
+     `url`/`method`/`timeout_seconds` — there is no `body` field and no
+     templating layer anywhere in the tool surface, so the body can only be the
+     tool-call arguments object.
+   * **`input_parameter_schema` is validated to be `type: "object"` at tool
+     CREATE time.** Verified 2026-08-28 by deploying
+     a throwaway tool definition with a top-level array schema:
+     `422 {"loc": ["body", "input_parameter_schema"], "msg": "Value error, Input
+     schema must have type 'object'"}`.
+     **The OpenAPI spec does not show this.** It declares the field as
+     `{"anyOf": [{"additionalProperties": true, "type": "object"}, {"type":
+     "null"}]}`, where `type: "object"` constrains the field's *value* and
+     `additionalProperties: true` reads as "no constraint on contents" — so the
+     spec suggests an array schema is allowed. A Pydantic field validator
+     enforces more than the schema declares. Generalise: on this surface, a
+     permissive-looking `additionalProperties: true` is not evidence of
+     permissiveness. Only the call is.
+   * **And the endpoint says so in plain words.** Sending a flat single policy
+     object instead returns
+     `400 {"detail": "Single item payload processing not supported, for now. Put
+     it into a list and resubmit the data.", "code": "400010"}`.
+     Quote that verbatim in any product conversation — note **"for now"**, which
+     is Alation acknowledging the limitation as temporary.
+
+   The probe tool definitions were **deliberately not kept in `tools/`.** A file
+   called `create_business_policy.json` sitting beside four live tools reads as a
+   capability this project has; the error strings above are both the stronger
+   evidence and the safer artifact.
+
+   Three independent executions, all negative: array-typed input schema → 422 at
+   tool-create time; nested `{"policies": [{…}]}` → the outer object is validated
+   *as* a policy and fails on missing `title`; flat single object → refused for
+   single-item processing. An HTTP tool's body is always a JSON object and this
+   endpoint always requires a JSON array.
+
+   **Do not read a field-level 400 as progress.** The validator runs in stages,
+   all returning `400010` — `"Syntactic validation failed"` (JSON Schema), then
+   `"Semantic validation failed"` (business rules), then processing. Walking
+   forward through those stages looks like converging on success and is not;
+   reaching a later stage proves only that the body was *parseable* as a policy
+   item. This produced one full wrong reversal on 2026-08-28 before the
+   processing step was ever reached.
 3. `Create or Update Document` *can* write synchronously, but produces Document
    Hub documents — and CDM standards only source from Policy Center policies
    (tested directly).
@@ -168,6 +210,31 @@ independent walls:
 Standards, by contrast, are object-bodied, synchronous, return `{id, key}`, and
 accept the bearer alone — so a Flow step could create them. The missing
 capability is a `create_business_policy` tool.
+
+**What IS reachable, and it is an uncomfortable asymmetry.** `DELETE
+/integration/v1/business_policies/` takes an **object** — `{"ids": [1,2,3]}`,
+synchronous, 204, no bulk job — which maps onto the named-parameter model
+exactly. So a custom HTTP tool can delete business policies, and
+`tools/delete_business_policies.json` does. Read together with the wall above:
+**as the product stands an agent can be given the power to delete business
+policies but not to create them.** Scope who gets that tool accordingly.
+
+Note the endpoint takes ids, so **no namespace guard is possible in the tool
+config** — nothing there can enforce the `BCBS239 - ` prefix. That guard has to
+live in the agent's prompt (resolve titles with `Find Business Policies` first,
+delete only ids whose title was read and confirmed, never pass an id the agent
+did not itself just resolve). A hallucinated integer deletes a customer's real
+policy. This is precisely why the kit deletes by *recorded* id from a state
+file; an agent has no equivalent ledger, so in chat the human is the ledger.
+
+**Why three tools still would not replace the kit.** Even granting a working
+create tool, the write is async: `202` with a task id and no object ids. So
+policy creation from an agent is create → confirm-by-search → record, and the
+recording has nowhere durable to live — chat context is not a state file, Flows
+have no memory between runs, and `Save Asset` expires in 4 hours. Three tools
+buy a self-contained create-and-clean-up demo **inside one conversation**. They
+do not buy provisioning, because the state file is the part with no in-product
+equivalent.
 
 ## Reading the API before guessing
 

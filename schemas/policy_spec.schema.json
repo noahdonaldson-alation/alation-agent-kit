@@ -4,7 +4,8 @@
   "title": "Policy spec",
   "description": "The contract for a provisionable policy spec. Derived from policies/bcbs239.json, which is VERIFIED — it created 4 policies and 4 published overlay standards on finance-industry.mtse. Field names here match the CDE service's StandardCreationRequest exactly (note allowed_values, not accepted_values). Both the hand-authored spec and the policy_author agent's output validate against this, so `policy apply` cannot tell them apart.",
   "type": "object",
-  "required": ["regulation", "policy_group", "policies", "standards"],
+  "required": ["regulation", "policy_group", "policies"],
+  "$comment": "`standards` left the required list on 2026-08-28. A Template Overlay standard cannot be created without a source business policy, and Critical Data Manager generates its derived_requirements from that policy's prose using its own AI — so a standard authored here would bypass the generation that makes it worth having. Specs from the obligation path (policy_body_author + authoring.assemble_policy_spec) carry policies only; the hand-authored policies/bcbs239.json still carries standards and still validates, and policies.py:plan() already guards with `if spec.get('standards')`.",
   "additionalProperties": false,
   "properties": {
     "$comment": {"type": "string"},

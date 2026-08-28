@@ -23,6 +23,7 @@ from pathlib import Path
 DEFAULT_SCHEMA = "schemas/cde_dq_requirements.schema.json"
 MAPPING_SCHEMA = "schemas/pde_mapping.schema.json"
 OBLIGATION_SCHEMA = "schemas/obligation_register.schema.json"
+POLICY_BODY_SCHEMA = "schemas/policy_body.schema.json"
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -50,7 +51,76 @@ def structural_checks(doc: dict, source: str | None = None) -> list[str]:
         return mapping_checks(doc)
     if "obligations" in doc:
         return obligation_checks(doc, source)
+    if "policies" in doc and all("body_paragraphs" in p for p in doc["policies"]):
+        return policy_body_checks(doc, source)
     return register_checks(doc)
+
+
+def policy_body_checks(doc: dict, source: str | None = None) -> list[str]:
+    """policy_body_author drafts: prose plus citation POINTERS.
+
+    Pass --source pointing at the obligation register to get the checks that
+    matter; without it only the shape-independent ones run. Note what is NOT
+    checked here: quotation traceability. The agent emits no quotation text, so
+    there is nothing to trace — that property is held by construction in
+    authoring.assemble_policy_spec, which is the point of the design.
+    """
+    problems: list[str] = []
+    entries = doc.get("policies") or []
+    refs = [e.get("ref") for e in entries]
+    dupes = {r for r in refs if refs.count(r) > 1}
+    if dupes:
+        problems.append(f"duplicate refs: {sorted(dupes)}")
+
+    for e in entries:
+        ref = e.get("ref", "?")
+        body = " ".join(e.get("body_paragraphs") or [])
+        if " should " in body:
+            problems.append(f"{ref}: body says 'should' — a policy is an "
+                            "obligation even where the source recommends")
+        if re.search(r"<[a-z/]|&[a-z]+;|\*\*", body):
+            problems.append(f"{ref}: body contains markup or HTML entities; "
+                            "the assembly step adds those")
+
+    register = None
+    if source:
+        try:
+            register = json.loads(source[source.find("{"):source.rfind("}") + 1])
+        except (ValueError, json.JSONDecodeError):
+            register = None
+    if not register or not register.get("obligations"):
+        return problems
+
+    by_ref = {o.get("ref"): o for o in register["obligations"]}
+    missing = [r for r in by_ref if r not in refs]
+    extra = [r for r in refs if r not in by_ref]
+    if missing:
+        problems.append(f"no policy body for {sorted(missing)} — one policy per "
+                        "obligation is structural, not a judgement")
+    if extra:
+        problems.append(f"policy body for {sorted(set(extra))}, absent from the register")
+
+    for e in entries:
+        o = by_ref.get(e.get("ref"))
+        if not o:
+            continue
+        ref = e["ref"]
+        for c in e.get("cite") or []:
+            arr = (o.get("citations") if c.get("from") == "citations"
+                   else o.get("measurable_expectations")) or []
+            if not isinstance(c.get("index"), int) or c["index"] >= len(arr):
+                problems.append(f"{ref}: cite {c} is out of range "
+                                f"({len(arr)} available)")
+        # The CDM-derivability proxy, and the number that actually matters: a
+        # dimension the register measured but the prose never names cannot be
+        # derived into a requirement, because CDM reads only the prose.
+        body = " ".join(e.get("body_paragraphs") or []).lower()
+        dims = {x.get("dimension") for x in o.get("measurable_expectations") or []}
+        lost = sorted(d for d in dims if d and d not in body)
+        if lost:
+            problems.append(f"{ref}: dimension(s) {lost} measured in the register "
+                            "but never named in the policy body")
+    return problems
 
 
 def _norm_ws(text: str) -> str:
@@ -377,6 +447,9 @@ def main() -> int:
             path = MAPPING_SCHEMA
         elif isinstance(doc, dict) and "obligations" in doc:
             path = OBLIGATION_SCHEMA
+        elif (isinstance(doc, dict) and doc.get("policies")
+              and all("body_paragraphs" in p for p in doc["policies"])):
+            path = POLICY_BODY_SCHEMA
         else:
             path = DEFAULT_SCHEMA
         if path not in _cache:
@@ -419,6 +492,15 @@ def main() -> int:
             summary = (f"{len(doc.get('obligations') or [])} obligations "
                        f"(P{','.join(str(o.get('principle')) for o in doc['obligations'])}), "
                        f"{len(doc.get('cross_cutting') or [])} cross-cutting{traced}")
+        elif doc.get("policies") and all("body_paragraphs" in p
+                                         for p in doc["policies"]):
+            bodies = doc["policies"]
+            chars = sum(len(" ".join(p.get("body_paragraphs") or []))
+                        for p in bodies)
+            cites = sum(len(p.get("cite") or []) for p in bodies)
+            summary = (f"{len(bodies)} policy bodies "
+                       f"(P{','.join(p['ref'][5:].lstrip('0') for p in bodies)}), "
+                       f"{cites} citation pointers, {chars:,} chars of prose")
         else:
             summary = (f"{len(doc.get('cde_candidates') or [])} CDEs, "
                        f"{len(doc.get('cross_cutting_dq') or [])} cross-cutting")

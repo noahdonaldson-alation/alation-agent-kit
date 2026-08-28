@@ -85,8 +85,24 @@ STATUS_EDGES = {
     "DRAFT": {"PENDING_APPROVAL"},
     "PENDING_APPROVAL": {"PUBLISHED", "DRAFT"},
     "IN_REVIEW": {"PUBLISHED", "DRAFT"},
-    "PUBLISHED": {"DRAFT"},
+    # PUBLISHED IS TERMINAL. This previously read {"DRAFT"}, which was assumed
+    # and never tested, and teardown was built on it. Disproven by execution
+    # 2026-08-28 on six standards:
+    #   POST /standard/{id}/status/ {"new_status": "DRAFT"} -> 400 "Invalid
+    #   target status for Standard status transition"
+    #   DELETE /standard/{id}/       -> 403 "Only DRAFT and PENDING APPROVAL
+    #   Standards can be deleted"
+    # A published standard cannot be demoted and cannot be deleted. Editing one
+    # creates a NEW DRAFT VERSION (POST /standard/{id}/new_version/) and the
+    # published version stays; deleting that draft reverts to it. So publish is
+    # a one-way door, and PENDING_APPROVAL is the last state from which a
+    # standard is still removable.
+    "PUBLISHED": set(),
 }
+
+# From the 403 body above, verbatim. Both states delete directly — there is no
+# need to walk PENDING_APPROVAL back to DRAFT first.
+DELETABLE_STANDARD_STATES = {"DRAFT", "PENDING_APPROVAL"}
 
 
 def status_path(current: str, target: str) -> list[str] | None:
@@ -879,33 +895,62 @@ class PolicyProvisioner:
                            f"not deleted ({str(err)[:100]})")
                 continue
 
-            # A PUBLISHED standard cannot be deleted — it is in force. Walk it
-            # back to DRAFT first, which STATUS_EDGES already says is legal from
-            # both PUBLISHED and PENDING_APPROVAL. Publishing during a demo and
-            # then tearing down is the normal path, so this is the common case,
-            # not an edge case.
             try:
                 current = (self.c.get(f"{STANDARDS}{rec['id']}/",
                                       extra_headers={"CDEToken": token})
                            or {}).get("status")
             except (AlationError, RuntimeError):
                 current = None
+            cur = str(current or "").upper()
 
-            if current and str(current).upper() != "DRAFT":
-                for hop in (status_path(str(current), "DRAFT") or []):
-                    try:
-                        self.c.post(f"{STANDARDS}{rec['id']}/status/",
-                                    json_body={"new_status": hop,
-                                               "comment": "Teardown by agentkit"},
-                                    extra_headers={"CDEToken": token})
-                        log.append(f"    (standard id={rec['id']} {current} -> {hop} "
-                                   f"so it can be deleted)")
-                        current = hop
-                    except (AlationError, RuntimeError) as err:
-                        log.append(f"  ! standard {rec['name']}: could not move "
-                                   f"{current} -> {hop} for deletion: "
-                                   f"{str(err)[:120]}")
-                        break
+            # Ask the instance which transitions are legal rather than trusting
+            # STATUS_EDGES. Guessing this table is what produced six failed
+            # teardowns: it claimed PUBLISHED -> DRAFT and no such edge exists.
+            # Best-effort — if the endpoint is absent the hard-coded table still
+            # applies, but when it answers it is authoritative and its answer is
+            # logged so the table can be corrected from evidence.
+            allowed: set[str] | None = None
+            try:
+                nxt = self.c.get(f"{STANDARDS}{rec['id']}/next_status/",
+                                 extra_headers={"CDEToken": token})
+                if isinstance(nxt, list):
+                    allowed = {str(s).upper() for s in nxt}
+                elif isinstance(nxt, dict):
+                    allowed = {str(s).upper()
+                               for s in (nxt.get("next_status")
+                                         or nxt.get("statuses") or [])}
+                if allowed is not None:
+                    log.append(f"    (standard id={rec['id']} is {cur}; instance "
+                               f"reports next_status={sorted(allowed) or 'none'})")
+            except (AlationError, RuntimeError):
+                allowed = None
+
+            if cur and cur not in DELETABLE_STANDARD_STATES:
+                reachable = [s for s in (allowed if allowed is not None
+                                         else STATUS_EDGES.get(cur, set()))
+                             if s in DELETABLE_STANDARD_STATES]
+                if not reachable:
+                    # Not a failure to retry — a property of the object. Say so
+                    # plainly, and KEEP the state record: an object that exists
+                    # un-recorded is invisible to teardown forever.
+                    log.append(
+                        f"  # standard {rec['name']} (id={rec['id']}) is {cur} "
+                        f"and is PERMANENT — a published standard cannot be "
+                        f"demoted or deleted. Left in place, still recorded.")
+                    continue
+                hop = reachable[0]
+                try:
+                    self.c.post(f"{STANDARDS}{rec['id']}/status/",
+                                json_body={"new_status": hop,
+                                           "comment": "Teardown by agentkit"},
+                                extra_headers={"CDEToken": token})
+                    log.append(f"    (standard id={rec['id']} {cur} -> {hop} "
+                               f"so it can be deleted)")
+                    cur = hop
+                except (AlationError, RuntimeError) as err:
+                    log.append(f"  ! standard {rec['name']}: could not move "
+                               f"{cur} -> {hop} for deletion: {str(err)[:120]}")
+                    continue
 
             try:
                 self.c.delete(f"{STANDARDS}{rec['id']}/",

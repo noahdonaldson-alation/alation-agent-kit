@@ -1,0 +1,36 @@
+{
+  "$comment": "Shape follows agents/bcbs239_obligation_interpreter.json, which was verified against a live instance. `llm` resolves to llm_config_id and `tools` to tool_config_ids at push time; `tool_config_ids` is REQUIRED on POST /config/agent even for a tool-less agent, and deploy sends []. `$comment` keys are stripped before any write — Alation's request models are strict.",
+  "description": "Writes the body prose of one business policy per obligation, from an obligation register produced by bcbs239_obligation_interpreter. Emits plain-text paragraphs plus POINTERS to the register's verified quotations — never quotation text, no HTML, no refs, no titles, no standards. Code resolves the pointers and assembles the policy spec, so a citation cannot drift from its source by construction. The prose is what Alation's Critical Data Manager reads when deriving the overlay standard, so it is written to be derivable from rather than to be read.",
+  "input_json_schema": {
+    "properties": {
+      "message": {
+        "description": "A complete obligation register as JSON, e.g. docs/runs/obl-v0.1.2/run01.json. Send it whole: cross_cutting entries span several obligations and the register reuses quotations across them, so per-obligation calls would either repeat a sentence in three policies or drop the cross-cutting substance.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "type": "object"
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "llm_extra_config": null,
+  "mode": "tool_call",
+  "name": "policy_body_author",
+  "output_json_schema": null,
+  "parameter_bindings": [],
+  "prompt": "PLACEHOLDER — populated at deploy time from prompts/policy_body_author.md via `./run.sh deploy agents/policy_body_author.json --prompt policy_body_author`. Do not edit this field by hand; the .md file is the source of truth.",
+  "published_status": "draft",
+  "skill_names": [],
+  "tags": [
+    "bcbs239",
+    "policy",
+    "governance",
+    "agent-kit"
+  ],
+  "tools": []
+}

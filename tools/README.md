@@ -4,6 +4,28 @@ Agent Studio custom tools, as files, for the same reason agents and prompts are
 files: ids are per-instance, so the definition is the durable thing and the id is
 not.
 
+## Read this before adding anything here
+
+**Nothing in Agent Studio creates a business policy, and nothing here ever
+will.** Policies are created by the kit — `policies.py`, via `policy apply` —
+and by nothing else. Agent Studio can *read* policies (`Find Business Policies`)
+and *delete* them (`Delete Business Policies`), because those endpoints take
+object bodies. `POST`/`PUT /integration/v1/business_policies/` take a bare
+array, and an HTTP tool's body can only ever be the tool-call arguments object.
+Four executions closed that search space; the verbatim errors are in
+`docs/policy-commands.md`.
+
+Standards are a separate question and the answer changed: **CDM generates the
+overlay standard from the policy**, in the UI, using its own AI. So
+`Create CDE Overlay Standard` below is not the intended creation path either —
+it exists, it has never been successfully invoked, and its bearer-only auth is
+unproven. Do not build on it without testing it first.
+
+If a file appears in this directory that looks like it creates a policy, it is a
+probe or a mistake. Probe definitions are deliberately not kept — a file named
+`create_business_policy.json` sitting beside four live tools reads as a
+capability we have.
+
 ## These are LIVE on finance-industry.mtse — do not delete
 
 | Tool | `function_name` | `tool_type` | What depends on it |

@@ -39,3 +39,10 @@ artifacts/*
 
 # OS
 .DS_Store
+
+# Agent-authored policy specs: regenerable, and NOT reproducible run to
+# run (policy_author gave 7 policies once and 6 the next time from identical
+# inputs). A committed copy is one sample masquerading as canonical, which is
+# how two specs came to share refs with different titles. The measured result
+# of each prompt version lives in prompts/policy_author.meta.yaml instead.
+policies/*.generated.json

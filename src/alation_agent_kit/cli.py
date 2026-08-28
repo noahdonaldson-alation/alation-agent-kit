@@ -245,8 +245,78 @@ def _provisioner(args):
     return PolicyProvisioner(AlationClient(s), state, prefix), state
 
 
+def _cmd_policy_assemble(args) -> int:
+    """Obligation register + policy_body_author draft -> a provisionable spec.
+
+    Deliberately OFFLINE — no client, no credentials, no instance. Assembly is
+    pure transformation, so it can be re-run against a saved draft without
+    burning another agent call, and it can be tested with nothing configured.
+    """
+    import hashlib
+    from .authoring import assemble_policy_spec, verify_quotes_against_register
+
+    register = extract_json_text(Path(args.register).read_text(encoding="utf-8"))
+    if register is None:
+        print(f"ERROR: no JSON object found in {args.register}")
+        return 1
+    if not register.get("obligations"):
+        print(f"ERROR: {args.register} has no `obligations` — this action takes "
+              f"an OBLIGATION register (bcbs239_obligation_interpreter), not a "
+              f"CDE register. For the CDE path use `policy author`.")
+        return 1
+
+    bodies = extract_json_text(Path(args.bodies).read_text(encoding="utf-8"))
+    if bodies is None or "policies" not in bodies:
+        print(f"ERROR: {args.bodies} is not a policy_body_author draft "
+              f"(expected a `policies` array)")
+        return 1
+
+    reg_sha = hashlib.sha256(
+        json.dumps(register, sort_keys=True).encode()).hexdigest()[:16]
+    spec, problems = assemble_policy_spec(register, bodies, register_sha=reg_sha)
+
+    # Policy groups have no create API — they are resolved by EXACT title and
+    # never created. The register carries `regulation.id` ("BCBS239"), but the
+    # group on an instance may be titled differently ("BCBS 239"), and a miss
+    # means the policies land ungrouped. Overridable rather than hand-edited,
+    # because this is a per-instance fact and the spec is regenerated output.
+    if args.group_title:
+        spec["policy_group"]["title"] = args.group_title
+    problems += verify_quotes_against_register(spec, register)
+
+    print(f"Assembling {args.register} (sha={reg_sha}) + {args.bodies}")
+    print(f"  {len(register['obligations'])} obligation(s) -> "
+          f"{len(spec['policies'])} policy(ies), no standards "
+          f"(CDM derives those from the policy)\n")
+    for p in spec["policies"]:
+        print(f"  {p['ref']:<10} {p['title'][:44]:44} "
+              f"para {str(p['derived_from']['paragraphs']):<16} "
+              f"{p['description'].count('<em>&para;')} quote(s)  "
+              f"{len(p['description']):>5} chars")
+
+    if problems:
+        print(f"\n{len(problems)} problem(s) — nothing written:")
+        for pr in problems:
+            print(f"  ! {pr}")
+        return 1
+
+    write_json(args.output, spec)
+    print(f"\nWrote {args.output}")
+    print("Marked reviewed:false — `policy apply` refuses it until a human "
+          "approves. Read it, then:")
+    print(f"  ./run.sh policy review {args.output} --approve --by \"Your Name\"")
+    return 0
+
+
 def cmd_policy(args) -> int:
     """plan / apply / destroy over policy groups, policies and standards."""
+    # `assemble` runs BEFORE the spec is read or a provisioner is built: it is
+    # the action that PRODUCES a spec, so requiring one as input would be
+    # circular, and it touches no instance, so requiring credentials would make
+    # a pure transformation unrunnable offline.
+    if args.action == "assemble":
+        return _cmd_policy_assemble(args)
+
     spec = read_json(args.spec)
     prov, state = _provisioner(args)
 
@@ -922,7 +992,7 @@ def build_parser() -> argparse.ArgumentParser:
     pp = sub.add_parser("policy", help="Provision policy groups, policies, standards")
     pp.add_argument("action",
                 choices=["plan", "apply", "verify", "standards", "author",
-                         "review", "assess", "publish", "destroy"])
+                         "assemble", "review", "assess", "publish", "destroy"])
     pp.add_argument("spec", nargs="?", default="policies/bcbs239.json")
     pp.add_argument("--prefix", default=None,
                     help="Namespace prefix for created objects, e.g. 'BCBS239 - '. "
@@ -933,7 +1003,18 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--yes", action="store_true",
                     help="Actually write. Without it, apply and destroy only report.")
     pp.add_argument("--register", default="docs/runs/v0.6.0/run01.json",
-                    help="For `policy author`: the requirements register")
+                    help="For `policy author`: the CDE requirements register. "
+                         "For `policy assemble`: the OBLIGATION register from "
+                         "bcbs239_obligation_interpreter.")
+    pp.add_argument("--bodies", default="docs/runs/pba-v0.1.0/run01.json",
+                    help="For `policy assemble`: the policy_body_author draft "
+                         "(prose plus citation pointers).")
+    pp.add_argument("--group-title",
+                    help="For `policy assemble`: the EXACT title of the existing "
+                         "policy group. Groups have no create API and are matched "
+                         "by exact title, so 'BCBS239' and 'BCBS 239' are "
+                         "different groups. Defaults to the register's "
+                         "regulation.id.")
     pp.add_argument("--agent", default="policy_author",
                     help="For `policy author`: the authoring agent")
     pp.add_argument("-o", "--output", default="policies/bcbs239.generated.json",
