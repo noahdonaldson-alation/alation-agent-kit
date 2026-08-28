@@ -1,5 +1,10 @@
-# Secrets — never commit
+# Secrets — never commit.
+# `.env` alone matches only that exact name, so a `.env.bak` left behind by an
+# edit would have been committed with a live refresh token in it. Ignore every
+# .env variant and re-include the example explicitly.
 .env
+.env.*
+!.env.example
 *.pem
 *.key
 

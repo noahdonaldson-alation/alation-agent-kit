@@ -1,0 +1,164 @@
+name: policy_author
+purpose: >
+  Turns a validated requirements register into a provisionable Alation policy
+  spec: business policies grouped by principle, one overlay standard per policy,
+  and the attestation fields a steward answers per CDE. Removes the hand-authoring
+  step that currently costs a person a day per regulation.
+
+target_agent: policy_author
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+
+deploy_variables: {}
+
+output:
+  format: json
+  schema: schemas/policy_spec.schema.json
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  produced_by: bcbs239_cde_dq_interpreter (step 2) — a validated requirements register
+  note: >
+    The register is ~56KB compact. Passed as a message, which has no size cap.
+    A Flow passing it as a tool result would truncate near 10k chars — see
+    docs/pipeline-and-unstructured.md.
+
+agent_config:
+  mode: tool_call
+  tools: []
+  cost_note: >
+    No tools, so no ACU. Same cost profile as the interpreter: this is pure
+    interpretation of text already in hand, and it deliberately never looks at
+    the customer's catalog. Policies describe obligations, not this bank's
+    tables — a policy that referenced real table names would not survive being
+    deployed into a second instance, which defeats the reusability goal.
+
+review_gate:
+  required: true
+  note: >
+    Output is written to policies/<reg>.generated.json with
+    `generated.reviewed: false`. `policy apply` REFUSES a spec with
+    reviewed=false. A human reads it, edits it, sets reviewed=true. The kit
+    never sets that flag. Rationale: this is the only agent in the pipeline
+    whose output is written into a bank's governance framework rather than
+    reported to a person, and machine-authored policy that nobody read is a
+    liability regardless of how good the model is.
+
+design_notes: >
+  Grouping is one policy per PRINCIPLE that drives at least one CDE. Per-CDE
+  duplicates the same obligation across elements; one-per-regulation forces
+  every CDE to answer every question. Principle-level is what makes attachment
+  selective, and it is what the reviewed hand-authored bcbs239.json does.
+
+  `standard_attachment` is deliberately NOT requested from the model. It is a
+  function of each CDE's driven_by principles, and the convention here is that
+  when a field is derivable, code computes it — the mapper got its own tallies
+  wrong three runs running.
+
+  Citations are constrained to what the register carries, including verbatim
+  `driven_by[].quote` text. The failure mode this guards against is a plausible
+  paragraph number invented from training knowledge: unverifiable, and
+  indistinguishable from a correct one to a reviewer.
+
+  The prompt is regulation-agnostic on purpose — nothing in it mentions BCBS 239.
+  The same prompt should author a spec for any regulation the interpreter can
+  read. That is untested against a second regulation.
+
+changelog:
+  - version: 0.1.0
+    date: 2026-08-27
+    note: >
+      Initial version. Written after inspecting the real register shape
+      (docs/runs/v0.6.0/run01.json) rather than guessing it, and after
+      confirming the hand-authored policies/bcbs239.json validates against
+      schemas/policy_spec.schema.json with zero errors — so the agent is held to
+      a standard that a known-good artifact actually meets.
+      UNTESTED against a live instance.
+      Watch for, in order:
+        1. Invented paragraph numbers or quotes not present in the register.
+           The worst failure and the hardest to spot; diff quotes against the
+           register mechanically, do not eyeball them.
+        2. Coverage of principles 6, 7, 8. The register cites them; the
+           hand-authored spec omits them. A correct run should produce ~7
+           policies, not 4 — if it produces exactly the 4 I wrote, suspect it is
+           pattern-matching a familiar answer rather than reading the register.
+        3. Pickers whose options are all affirmative — a control with no failing
+           answer is decoration.
+        4. Fields that would read identically for every CDE, which means the
+           attestation is not element-specific.
+        5. `standard_attachment` appearing despite being forbidden.
+    result: >
+      First live run, 2026-08-27 (register sha cb977359b463b028).
+      Watch item 2 PASSED decisively: 7 policies / 7 standards covering
+      principles 2-8, not the 4 I hand-wrote — it read the register rather than
+      reproducing a familiar answer. Watch items 3 and 4 passed (no all-positive
+      pickers, fields element-specific). Watch item 5 FAILED mildly: it emitted
+      `standard_attachment` despite the prohibition; harmless, since finalize()
+      recomputes it, but the instruction is not biting.
+
+      Watch item 1 needs restating, because the finding is not what the check
+      said. Four quotations were absent from the register — and ALL FOUR are
+      verbatim-correct BCBS 239 text. The model was not hallucinating; it knows
+      this regulation and quoted it from training knowledge instead of from the
+      document it was handed. One quote started in the register and was
+      *extended* past where the register's version ended; one was repeated
+      twice.
+
+      That is a latent failure, not a near-miss. BCBS 239 is famous, so recall
+      is accurate here. Against a customer's internal policy pack — the actual
+      target of this whole kit — the same behaviour yields confident invented
+      quotations indistinguishable from real ones. Fixed in v0.2.0 by making
+      the register the only permitted source explicitly, forbidding extension of
+      a quote past the register's version, and adding a locate-before-returning
+      step. The audit now reports "not traceable to the register" rather than
+      "fabricated", since only the former is a claim we can support.
+  - version: 0.2.0
+    date: 2026-08-27
+    note: >
+      Response to the v0.1.0 live run. Adds a "Citations: the register is your
+      only source" section stating that recognising the regulation is not
+      licence to quote from memory, that a quote must not be extended past the
+      register's version, and that a thin register means a shorter policy rather
+      than a padded one. Checklist item 5 now requires locating each quoted span
+      in the register before returning; item 6 forbids reusing a quotation.
+      Prediction to test: quotations-not-traceable drops from 4 to 0, policy
+      count stays at ~7, and at least one policy gets visibly shorter where the
+      register's coverage of that principle is thin. If policy count drops below
+      7, the citation constraint has over-corrected into omitting principles.
+    result: >
+      Improvement, not a fix. Not-traceable quotations 4 -> 2. Policy count held
+      at 7 and principles 2-8 stayed covered, so the constraint did not
+      over-correct. The extended-quote case and the duplicated quotation both
+      disappeared, and `standard_attachment` is no longer emitted — three
+      secondary problems resolved.
+
+      The two survivors are "Supervisors expect banks to produce aggregated risk
+      data that is complete..." and "Banks need to build their risk systems to be
+      capable of producing aggregated risk data rapidly during times of
+      stress/crisis...". Both are verbatim-correct BCBS 239 and neither is in the
+      register. They are also two of the most-quoted sentences in the document.
+
+      Conclusion worth generalising: **prompt instruction reduces recall
+      substitution but does not eliminate it.** Telling a model not to use what
+      it knows competes with how strongly it knows it. Asking a model to
+      reproduce text it has memorised will keep leaking, so the next version
+      should stop asking.
+  - version: 0.3.0
+    date: pending
+    note: >
+      PROPOSED — quote by reference, not by transcription. Instead of writing
+      quotation text, the agent emits a pointer:
+      `{"cde": "CDE-03", "driven_by_index": 0}`, and `authoring.py` substitutes
+      the register's exact text when building the description. The register
+      offers 19 distinct quotes across principles 2-8, so coverage is adequate.
+      This applies the project convention properly: the model is doing judgement
+      (which quote supports this obligation) and code is doing the exact action
+      (reproducing the text). A quote then CANNOT be untraceable by
+      construction, rather than by instruction — which is the difference between
+      a guarantee and a request.
+      Cost: the prompt and the spec schema both change, and a pointer is harder
+      for a human to read in the raw JSON than an inline quote.

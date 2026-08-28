@@ -1,6 +1,8 @@
 {
   "agents": {
     "bcbs239_cde_dq_interpreter": "91164f6f-5ef8-4ea2-803f-4daf34a78951",
-    "bcbs239_pde_mapper": "17f3bb0b-a17d-491e-9ace-05fb888af9b7"
+    "bcbs239_pde_mapper": "17f3bb0b-a17d-491e-9ace-05fb888af9b7",
+    "policy_author": "fd21d916-4ea4-4058-8f88-d2de2ccf640e",
+    "standards_provisioner": "fe1d29de-ab7c-40fb-a53e-1c80fdf2a69c"
   }
 }

@@ -276,16 +276,26 @@ class CatalogTokenProvider:
         self.s = settings
         self._key = f"catalog|{settings.base_url}|{settings.user_id}"
 
-    def token(self) -> str | None:
+    def token(self, force_refresh: bool = False) -> str | None:
+        """The legacy access token, minted and cached as needed.
+
+        `force_refresh` exists because a cached token can be revoked out from
+        under us: minting an access token revokes the others from the same
+        refresh token, so any other process — another shell, the UI, a colleague
+        sharing the account — silently invalidates ours while the cache still
+        looks valid. The cure is to re-mint on rejection rather than to trust
+        the expiry we recorded.
+        """
         # An explicitly supplied access token wins — useful for a one-off.
         if self.s.access_token:
             return self.s.access_token
         if not (self.s.refresh_token and self.s.user_id):
             return None
 
-        cached = self._read_cache()
-        if cached:
-            return cached
+        if not force_refresh:
+            cached = self._read_cache()
+            if cached:
+                return cached
 
         resp = requests.post(
             f"{self.s.base_url}{CATALOG_TOKEN_PATH}",

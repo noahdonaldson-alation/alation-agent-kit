@@ -1,0 +1,30 @@
+{
+  "$comment": "Tools deliberately empty: policies state obligations, not this bank's tables. An agent that could see the catalog would be tempted to name real objects, and a policy naming real objects does not survive deployment into a second instance \u2014 which defeats the whole reusability goal.",
+  "name": "policy_author",
+  "description": "Converts a validated regulatory requirements register into an Alation policy spec: business policies grouped by regulatory principle, one overlay standard per policy, and the attestation fields a data steward must answer for each critical data element. Input is the register JSON as the message; output is a policy spec JSON validating against schemas/policy_spec.schema.json. Interpretation only \u2014 it reads nothing from the catalog and creates nothing. Its output is written to a file for human review and is refused by `policy apply` until a person marks it reviewed.",
+  "input_json_schema": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "type": "string",
+        "description": "The requirements register JSON from bcbs239_cde_dq_interpreter. Send the whole register \u2014 policies are grouped across CDEs, so a partial register yields partial coverage. ~56KB is normal; the message has no size cap."
+      }
+    },
+    "required": [
+      "message"
+    ]
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "mode": "tool_call",
+  "tools": [],
+  "published_status": "draft",
+  "tags": [
+    "policy",
+    "governance",
+    "authoring"
+  ]
+}

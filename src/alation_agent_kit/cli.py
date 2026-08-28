@@ -8,6 +8,9 @@
     agentkit deploy agents/foo.json [--prompt <prompt-stem>] [--dry-run]
     agentkit run <agent-name> [--input-file FILE] [-o out.md] [-v] [--raw]
     agentkit prompts
+    agentkit tool show <name> | deploy <file.json>
+    agentkit preflight [--skip-unstructured]
+    agentkit pipeline [--source file|unstructured] [--stop-after interpret]
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from .auth import Settings, load_dotenv
 from .client import AI_V1, AlationClient
 from .invoke import extract_text, run_agent, run_agent_stream
 from .prompts import list_prompts, load_prompt, sync_prompt_into_agent
+from .store import extract_json as extract_json_text
 from .store import read_json, write_json
 
 
@@ -250,6 +254,25 @@ def cmd_policy(args) -> int:
         return 0
 
     if args.action == "apply":
+        from .authoring import review_gate
+        refusal = review_gate(spec, args.spec)
+        if refusal:
+            print("REFUSING TO APPLY\n")
+            print(refusal)
+            return 1
+        # Refuse a write when the state file belongs to a different spec.
+        # Otherwise apply "succeeds" while silently skipping the objects whose
+        # refs collide — which is exactly how three policies went missing.
+        conflicts = prov.state_conflicts(spec)
+        if conflicts:
+            print(f"REFUSING TO APPLY — {len(conflicts)} state conflict(s):\n")
+            for c in conflicts:
+                print(f"  ! {c}")
+            print("\nThe state file records objects from a different spec. Run")
+            print("`policy destroy --yes` first, or point --state at a separate file")
+            print("to keep the two deployments independently tearable.")
+            return 1
+
         actions = prov.plan(spec)
         creates = [a for a in actions if a.verb == "create"]
         if not creates:
@@ -285,6 +308,157 @@ def cmd_policy(args) -> int:
         if not args.yes:
             print("\nDry run. Re-run with --yes to change status.")
         return 0 if ok else 1
+
+    if args.action == "author":
+        from .authoring import audit, finalize
+        from .invoke import run_agent_stream
+        from .authoring import _plain  # noqa: F401  (kept importable for tests)
+        import hashlib
+
+        register_raw = Path(args.register).read_text(encoding="utf-8")
+        register = extract_json_text(register_raw)
+        if register is None:
+            print(f"ERROR: no JSON object found in {args.register}")
+            return 1
+        reg_sha = hashlib.sha256(
+            json.dumps(register, sort_keys=True).encode()).hexdigest()[:16]
+
+        from .authoring import authoring_instruction, required_principles
+
+        st = AgentStudio(AlationClient(Settings.from_env()))
+        agent_id = st.resolve_agent_id(args.agent) or args.agent
+        need = required_principles(register)
+        payload = (authoring_instruction(register)
+                   + json.dumps(register, separators=(",", ":")))
+        print(f"Authoring from {args.register} (register sha={reg_sha}, "
+              f"{len(payload):,} chars) via {args.agent}")
+        print(f"Required coverage (derived): principles "
+              f"{', '.join(map(str, need))}\n")
+        text = run_agent_stream(st.c, agent_id, {"message": payload})
+        draft = extract_json_text(text)
+        if draft is None:
+            raw = Path(args.output + ".raw.md")
+            raw.write_text(text, encoding="utf-8")
+            print(f"ERROR: no JSON object in the response; raw kept at {raw}")
+            return 1
+
+        prompt_sha = None
+        try:
+            prompt_sha = load_prompt(args.agent).sha256
+        except Exception:  # noqa: BLE001 - provenance is best-effort
+            pass
+
+        problems = audit(draft, register, strict_citations=True)
+        spec = finalize(draft, register, register_sha=reg_sha,
+                        prompt_sha=prompt_sha)
+        out = Path(args.output)
+        write_json(out, spec)
+
+        print(f"Wrote {out}")
+        print(f"  policies:  {len(spec.get('policies') or [])}")
+        print(f"  standards: {len(spec.get('standards') or [])}")
+        att = (spec.get("standard_attachment") or {}).get("by_principle") or {}
+        covered = sorted(int(k) for k, v in att.items() if v)
+        missing = [p for p in need if p not in covered]
+        extra = [p for p in covered if p not in need]
+        print(f"  principles covered: {', '.join(map(str, covered)) or 'none'}"
+              f"  (required: {', '.join(map(str, need))})")
+        if missing:
+            print(f"  ! MISSING principle(s) {missing} — re-run; coverage has "
+                  f"been unstable across runs")
+        if extra:
+            print(f"  ! UNREQUESTED principle(s) {extra}")
+        if problems:
+            print(f"\n{len(problems)} audit problem(s) — fix before review:")
+            for pr in problems:
+                print(f"  ! {pr}")
+        else:
+            print("\nAudit clean.")
+        print(f"\nNOT DEPLOYABLE YET. `policy apply` will refuse this file until a")
+        print(f"human reads it and sets \"reviewed\": true in its `generated` block.")
+        return 0 if not problems else 1
+
+    if args.action == "review":
+        from .authoring import approve, render_for_review
+
+        register = None
+        if args.register and Path(args.register).is_file():
+            register = extract_json_text(Path(args.register).read_text(encoding="utf-8"))
+        if register is None:
+            print(f"ERROR: need the register to check citations; "
+                  f"{args.register} not readable")
+            return 1
+
+        for line in render_for_review(spec, register):
+            print(line)
+
+        if not args.approve:
+            print("\nThis is a review view. Nothing has been changed.")
+            gen = spec.get("generated") or {}
+            if gen and not gen.get("reviewed"):
+                print("To approve after reading:")
+                print(f"  ./run.sh policy review {args.spec} --approve "
+                      f"--by \"Your Name\"")
+            return 0
+
+        from .authoring import audit
+        problems = audit(spec, register)
+        if problems and not args.force:
+            print(f"\nREFUSING to approve: {len(problems)} audit problem(s) above.")
+            print("Fix the spec, or re-run with --force if you have judged each one")
+            print("acceptable — the not-traceable quotes are accurate BCBS 239 text,")
+            print("so --force is a legitimate choice here, but it should be a choice.")
+            return 1
+        try:
+            approved = approve(spec, args.by or "")
+        except ValueError as exc:
+            print(f"\nERROR: {exc}")
+            return 1
+        write_json(args.spec, approved)
+        print(f"\nApproved by {approved['generated']['reviewed_by']} "
+              f"at {approved['generated']['reviewed_at']}")
+        print(f"Wrote {args.spec} — `policy apply` will now accept it.")
+        return 0
+
+    if args.action == "assess":
+        register = None
+        if args.register and Path(args.register).is_file():
+            register = extract_json_text(Path(args.register).read_text(encoding="utf-8"))
+        log, summary = prov.assess(spec, register)
+        print(f"Governance coverage on {state.instance}")
+        print(f"Spec: {args.spec}   prefix: {prov.prefix!r}\n")
+        for line in log:
+            print(line)
+        print(f"\n{summary['present']} present, {summary['missing']} missing, "
+              f"{summary['untracked']} untracked, {summary['orphaned']} orphaned")
+
+        if args.against:
+            from .authoring import diff_specs
+            older = read_json(args.against)
+            d = diff_specs(older, spec)
+            print(f"\n=== Spec change vs {args.against} ===")
+            if not d["material"]:
+                print("  No material change — the document implies the same policies.")
+            for item in d["policies_added"]:
+                print(f"  + NEW POLICY NEEDED  {item['title']} "
+                      f"(principle {item['principle']})")
+            for item in d["policies_removed"]:
+                print(f"  - NO LONGER IMPLIED  {item['title']} "
+                      f"(principle {item['principle']})")
+            for item in d["policies_renamed"]:
+                print(f"  ~ RENAMED  {item['from_ref']} -> {item['to_ref']} "
+                      f"({item['title']})")
+            for item in d["policies_changed"]:
+                print(f"  ~ CHANGED  {item['ref']}: {'; '.join(item['deltas'])}")
+            for item in d["standards_changed"]:
+                bits = [item["change"]]
+                if item.get("fields_added"):
+                    bits.append(f"+{len(item['fields_added'])} field(s)")
+                if item.get("fields_removed"):
+                    bits.append(f"-{len(item['fields_removed'])} field(s)")
+                print(f"  ~ STANDARD {item['ref']}: {', '.join(bits)}")
+        missing = summary["missing"] or summary.get("uncovered_principles")
+        return 1 if missing else 0
 
     if args.action == "standards":
         print(json.dumps(prov.dump_standards(), indent=2, default=str))
@@ -395,6 +569,93 @@ def cmd_refresh_token(args) -> int:
     return 0
 
 
+def cmd_preflight(args) -> int:
+    """Assert prerequisites read-only. Provisions nothing."""
+    from .preflight import run_preflight
+
+    s = Settings.from_env()
+    client = AlationClient(s)
+    print(f"Preflight against {s.base_url}\n")
+    if args.probe_cde_create:
+        print("NOTE: --probe-cde-create WRITES a throwaway standard and deletes "
+              "it again.\n")
+    checks, ok = run_preflight(
+        client, include_unstructured=not args.skip_unstructured,
+        probe_cde_create=args.probe_cde_create)
+    for ch in checks:
+        print(ch)
+    required_failed = [c for c in checks if c.required and not c.ok]
+    optional_failed = [c for c in checks if not c.required and not c.ok]
+    print(f"\n{len(checks) - len(required_failed) - len(optional_failed)} passed, "
+          f"{len(required_failed)} required failure(s), "
+          f"{len(optional_failed)} optional not yet available")
+    if optional_failed:
+        print("\nOptional items are the unstructured-document path. The pipeline "
+              "runs today from extracted text without them.")
+    return 0 if ok else 1
+
+
+def cmd_pipeline(args) -> int:
+    """Regulation -> register -> gap analysis, in one command."""
+    from .pipeline import Pipeline
+    from .sources import build_source
+
+    s = Settings.from_env()
+    client = AlationClient(s)
+    try:
+        source = build_source(
+            args.source, path=args.input_file, client=client,
+            object_id=args.object_id, asset_type_name=args.asset_type)
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
+        return 1
+
+    pipe = Pipeline(AgentStudio(client), outdir=Path(args.outdir),
+                    interpreter=args.interpreter, mapper=args.mapper)
+    print(f"Pipeline on {s.base_url}")
+    print(f"Source: {source.describe()}\n")
+    result = pipe.run(source, tag=args.tag, stop_after=args.stop_after)
+    for st in pipe.stages:
+        print(st)
+    print(f"\nManifest: {result.get('manifest_file')}")
+    if result.get("mapping"):
+        print("Coverage: " + json.dumps(result["mapping"]["coverage_summary"]))
+    return 0 if result.get("ok") else 1
+
+
+def cmd_tool(args) -> int:
+    """Inspect a tool's real schema, or deploy one from a file.
+
+    `show` exists because a tool's input_parameter_schema is the only reliable
+    statement of what it can actually do — and the docs do not list per-tool
+    schemas for built-ins.
+    """
+    st = _studio()
+    if args.action == "show":
+        want = args.target.strip().lower()
+        hits = [t for t in st.list_tools()
+                if want in str(t.get("name") or "").lower()
+                or want in str(t.get("function_name") or "").lower()]
+        if not hits:
+            print(f"No tool matching {args.target!r}")
+            return 1
+        for tool in hits:
+            print(f"\n=== {tool.get('name')} ===")
+            print(f"  id:            {tool.get('id')}")
+            print(f"  function_name: {tool.get('function_name')}")
+            print(f"  tool_type:     {tool.get('tool_type')}")
+            print(f"  visibility:    {tool.get('visibility_label')}")
+            print(f"  default_ref:   {tool.get('default_ref')}")
+            print(f"  description:   {str(tool.get('description') or '')[:300]}")
+            print("  input_parameter_schema:")
+            print(json.dumps(tool.get("input_parameter_schema"), indent=4)[:2500])
+        return 0
+
+    doc = read_json(args.target)
+    st.deploy_tool(doc, dry_run=args.dry_run)
+    return 0
+
+
 def cmd_prompts(args) -> int:
     for name in list_prompts():
         p = load_prompt(name)
@@ -421,6 +682,40 @@ def build_parser() -> argparse.ArgumentParser:
     pu.add_argument("email")
     pu.add_argument("--max-scan", type=int, default=2000)
     pu.set_defaults(func=cmd_userid)
+
+    pf = sub.add_parser("preflight",
+                        help="Assert prerequisites on the target instance (read-only)")
+    pf.add_argument("--probe-cde-create", action="store_true",
+                    help="WRITES: create+delete a throwaway standard to test "
+                         "whether the CDE service accepts the bearer for writes")
+    pf.add_argument("--skip-unstructured", action="store_true",
+                    help="Omit the unstructured-document checks")
+    pf.set_defaults(func=cmd_preflight)
+
+    pi = sub.add_parser("pipeline",
+                        help="regulation -> register -> gap analysis, one command")
+    pi.add_argument("--source", default="file", choices=["file", "unstructured"],
+                    help="Where the regulation text comes from")
+    pi.add_argument("--input-file",
+                    default="artifacts/bcbs239/bank_principles.txt",
+                    help="For --source file")
+    pi.add_argument("--object-id",
+                    help="For --source unstructured: the document's UUID")
+    pi.add_argument("--asset-type", default=None,
+                    help="For --source unstructured (default unstructured_data_file)")
+    pi.add_argument("--outdir", default="artifacts/pipeline")
+    pi.add_argument("--tag", help="Names the outputs; defaults to a timestamp")
+    pi.add_argument("--stop-after", choices=["fetch", "interpret"],
+                    help="Stop early — `interpret` skips the mapper's ACU cost")
+    pi.add_argument("--interpreter", default="bcbs239_cde_dq_interpreter")
+    pi.add_argument("--mapper", default="bcbs239_pde_mapper")
+    pi.set_defaults(func=cmd_pipeline)
+
+    ts = sub.add_parser("tool", help="Inspect or deploy custom tools")
+    ts.add_argument("action", choices=["show", "deploy"])
+    ts.add_argument("target", help="Tool name (show) or file path (deploy)")
+    ts.add_argument("--dry-run", action="store_true")
+    ts.set_defaults(func=cmd_tool)
 
     pl = sub.add_parser("list")
     pl.add_argument("kind", choices=["agents", "tools", "llms"])
@@ -456,8 +751,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     pp = sub.add_parser("policy", help="Provision policy groups, policies, standards")
     pp.add_argument("action",
-                choices=["plan", "apply", "verify", "standards",
-                         "publish", "destroy"])
+                choices=["plan", "apply", "verify", "standards", "author",
+                         "review", "assess", "publish", "destroy"])
     pp.add_argument("spec", nargs="?", default="policies/bcbs239.json")
     pp.add_argument("--prefix", default=None,
                     help="Namespace prefix for created objects, e.g. 'BCBS239 - '. "
@@ -467,6 +762,20 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--only", help="Comma-separated kinds: policy_group,policy,standard")
     pp.add_argument("--yes", action="store_true",
                     help="Actually write. Without it, apply and destroy only report.")
+    pp.add_argument("--register", default="docs/runs/v0.6.0/run01.json",
+                    help="For `policy author`: the requirements register")
+    pp.add_argument("--agent", default="policy_author",
+                    help="For `policy author`: the authoring agent")
+    pp.add_argument("-o", "--output", default="policies/bcbs239.generated.json",
+                    help="For `policy author`: where to write the spec")
+    pp.add_argument("--approve", action="store_true",
+                    help="For `policy review`: record YOUR approval after reading")
+    pp.add_argument("--by", help="Your name, required with --approve")
+    pp.add_argument("--force", action="store_true",
+                    help="Approve despite audit problems you have judged acceptable")
+    pp.add_argument("--against",
+                    help="For `policy assess`: an earlier spec to diff against, "
+                         "answering 'has the document changed what we need?'")
     pp.add_argument("--status", default="PUBLISHED",
                     choices=["DRAFT", "PENDING_APPROVAL", "PUBLISHED"],
                     help="Target status for `policy publish`")

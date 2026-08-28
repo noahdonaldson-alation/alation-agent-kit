@@ -49,29 +49,62 @@ set the run configuration to module `alation_agent_kit.cli`.
 ```
 prompts/          prompt bodies (.md) + sidecar metadata (.meta.yaml)
 agents/           agent definitions in AgentExport shape
-tools/            custom tool definitions (auth never committed)
-workflows/        workflow `definition` blobs
+policies/         policy specs: bcbs239.json (hand-authored),
+                  bcbs239.generated.json (agent-authored, needs review)
+schemas/          JSON Schemas for each agent contract + the policy spec
 scripts/          extract_bcbs239.py   PDF -> per-principle chunks
-                  compare_runs.py      measure stability across runs
+                  compare_runs.py      interpreter stability across runs
+                  compare_mappings.py  mapper runs vs a baseline
+                  validate_output.py   schema + structural checks (auto-detects contract)
+                  normalize_mapping.py recompute derivable fields in a mapping
                   inspect_stream.py    report a raw SSE stream's event schema
+                  repair_encoding.py   retired: fixes pre-UTF-8-fix mojibake
+                  render_report.py     ORPHAN, unfinished — see ../INVENTORY.md
+sql/              the prompt that generated the warehouse dimension pack
 docs/             prompt-iteration method, reviews, and runs/ evidence
 artifacts/        extracted text and everyday output (gitignored)
 src/              the CLI and API client
 .lockfile.json    name -> UUID map. Commit this.
 ```
 
+There is no `tools/` or `workflows/` directory. Custom HTTP tools were built once
+(for chat-driven standards creation) and removed as redundant with the CLI — see
+`../INVENTORY.md`. `agentkit tool show` still exists for inspecting an instance's
+tools, which is how we discovered `Get Asset Content` was already visible.
+
 ---
 
 ## Commands
 
+**Auth and environment**
+
 | Command | What it does |
 |---|---|
-| `whoami` | Verify auth and token cache; list agent count |
-| `list agents\|tools\|llms` | Inventory the instance |
+| `whoami` | Probe all three auth surfaces: Agent Studio, catalog, CDE service |
+| `refresh-token <username>` | Mint a legacy refresh token; returns it **and** your numeric user id |
+| `userid <email>` | Look up a numeric Alation user id (for `ALATION_USER_ID`) |
+| `preflight [--skip-unstructured] [--probe-cde-create]` | Assert prerequisites. Read-only, except `--probe-cde-create` which creates and deletes a throwaway standard |
+
+**Agents, prompts, tools**
+
+| Command | What it does |
+|---|---|
+| `list agents\|tools\|llms [--raw]` | Inventory the instance. Tools are listed at **all four visibility labels** — the API defaults to hiding `advanced` and `alation_internal` |
 | `export <name> [-o file]` | Pull an agent down, canonicalized for git |
 | `deploy <file> [--prompt N] [--dry-run]` | Upsert an agent. `--dry-run` works offline |
 | `run <name> [-m msg] [--input-file f] [-o out]` | Invoke and block for the result |
+| `tool show <name>` | Dump a tool's real `input_parameter_schema` — the only reliable statement of what it can do |
+| `tool deploy <file.json> [--dry-run]` | Upsert a custom tool. `${VAR}` placeholders are filled from `.env`, so no secret is committed |
 | `prompts` | List prompts with content hash and git SHA |
+
+**Pipeline and policy** — full detail in `docs/policy-commands.md`
+
+| Command | What it does |
+|---|---|
+| `pipeline [--source file\|unstructured] [--stop-after interpret]` | regulation → register → gap analysis, with a provenance manifest |
+| `policy plan\|apply\|verify\|publish\|destroy` | Provision, check and tear down policies + overlay standards |
+| `policy author\|review\|assess` | Generate a spec from a register, review and approve it, check for drift |
+| `policy standards` | Dump existing overlay standards verbatim (authoritative field shapes) |
 
 ---
 
@@ -218,13 +251,23 @@ as the capability banks find hardest, and the ECB's *Guide on effective RDARR*
 
 ## Open items
 
-- **CDE API status is unresolved.** Alation's public docs say CDE Manager
-  standards and CDEs have no REST API, but `/cde-service/integration/` IS
-  documented on developer.alation.com, `CDEToken` header included. The public
-  docs are stale. Worth a live confirmation before relying on it.
-- **`extract_text()` in `invoke.py` is best-effort.** The task-result shape isn't
-  fully documented; tighten it once you've seen real responses.
-- **`/call` is async** (returns `task_id`, then poll). promptfoo can't poll, so
-  Gate 2 needs either `/stream` or a custom provider wrapping `run_agent`.
+- **`policy_author` is unstable at N=1.** Two identical runs produced 7 and 6
+  policies. A runtime coverage contract (derived from the register) now states the
+  required principles explicitly, but that fix is unproven. Run it twice before
+  showing it.
+- **Three policies failed to create** in the first full run of the generated
+  spec. Root cause was ours — the bulk-job status vocabulary was invented — and
+  is fixed, but one job also hit a genuine Alation-side traceback. Not re-verified.
+- **Two policy specs have colliding refs.** `bcbs239.json` and
+  `bcbs239.generated.json` share four refs with different titles, which makes
+  `apply` skip creating the newer object. Pick one as authoritative.
+- **Unstructured document ingestion is prerequisite-blocked**, not code-blocked.
+  `Get Asset Content` is visible on the instance; the feature flag and a
+  collection are what's missing. See `docs/pipeline-and-unstructured.md`.
 - Read `Alation/alation-plugins` (`cli/clients/config.py`, `workflow.py`) before
   extending the client — it covers more of the surface than this does.
+
+**Resolved since first draft:** the CDE service is confirmed reachable and
+documented (`CDEToken`, and the OAuth bearer works too, including for writes);
+agent invocation uses `/chats/agent/{id}/stream` because the polling path 404s
+once a task succeeds.

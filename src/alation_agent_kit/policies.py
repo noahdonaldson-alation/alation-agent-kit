@@ -59,6 +59,19 @@ from .state import DeploymentState
 _GROUP_PATHS = ("/integration/v1/policy_group", "/integration/v1/policy_group/")
 POLICIES = "/integration/v1/business_policies/"
 JOB = "/api/v1/bulk_metadata/job/"
+JOB_ERRORS = "/api/job_error/"
+
+# Verified from the Policy API spec (Create_Policy_Bulk_Response_Body), NOT
+# guessed. Two independent fields, and the earlier code checked invented values
+# ("successful", "partially_successful") that this API never returns — so
+# `partial_success` was treated as still-running, the poll burned its full
+# timeout, and the id-recovery search then ran against a job that had in fact
+# finished. Cost: three policies that looked like search failures.
+# NOTE `na` is deliberately NOT here. It means "not applicable yet" and appears
+# while state is `queued`/`started` — treating it as terminal makes a running job
+# look finished, which is the same class of error as the one above, inverted.
+TERMINAL_STATUSES = {"succeeded", "failed", "partial_success", "skipped"}
+TERMINAL_STATES = {"finished"}
 CDE_AUTH = "/cde-service/integration/auth/"
 STANDARDS = "/cde-service/integration/standard/"
 
@@ -192,8 +205,23 @@ class PolicyProvisioner:
                 "without it; use --only policy to skip standards."
             )
         # Docs write this header uppercase; HTTP is case-insensitive but match them.
-        resp = self.c.request("POST", CDE_AUTH, None,
-                              extra_headers={"TOKEN": legacy})
+        try:
+            resp = self.c.request("POST", CDE_AUTH, None,
+                                  extra_headers={"TOKEN": legacy})
+        except AlationError as err:
+            # 403 "Invalid Alation API token" means the cached access token was
+            # revoked or expired. Access tokens last ~24h AND are revoked
+            # whenever a new one is minted from the same refresh token, so a
+            # cache hit is not proof of validity. Re-mint once before failing —
+            # otherwise a routine `whoami` in another shell breaks the next
+            # deploy for no visible reason.
+            if getattr(err, "status", None) not in (401, 403):
+                raise
+            fresh = self.c.catalog_token(force_refresh=True)
+            if not fresh or fresh == legacy:
+                raise
+            resp = self.c.request("POST", CDE_AUTH, None,
+                                  extra_headers={"TOKEN": fresh})
         tok = resp if isinstance(resp, str) else (
             resp.get("token") or resp.get("access_token"))
         if not tok:
@@ -256,6 +284,37 @@ class PolicyProvisioner:
         return actions
 
     # -- apply -------------------------------------------------------------
+    def state_conflicts(self, spec: dict) -> list[str]:
+        """Records in the state file that do not belong to THIS spec.
+
+        Two specs sharing a ref with different titles is not hypothetical: the
+        hand-authored and generated BCBS 239 specs both used `POL-ACCURACY` and
+        `POL-COMPLETE`, so `_ensure_*` found a recorded id, logged "already
+        ours", and silently skipped creating the new object. `verify` caught it
+        only afterwards, by which point three objects were missing and the run
+        looked like a search failure. Checking BEFORE a write turns a silent skip
+        into a refusal.
+        """
+        spec_refs = {p["ref"] for p in spec.get("policies") or []}
+        spec_refs |= {s["ref"] for s in spec.get("standards") or []}
+        titles = {p["ref"]: self.prefixed(p["title"])
+                  for p in spec.get("policies") or []}
+
+        problems: list[str] = []
+        for rec in self.state.teardown_order(KIND_ORDER):
+            ref, name = rec.get("ref"), (rec.get("name") or "")
+            if ref not in spec_refs:
+                problems.append(
+                    f"{rec['kind']} {ref} (id={rec['id']}, {name!r}) is recorded "
+                    f"but absent from this spec — left over from another one")
+                continue
+            expected = titles.get(ref)
+            if expected and expected.strip().lower() != name.strip().lower():
+                problems.append(
+                    f"{rec['kind']} {ref} is recorded as {name!r} but this spec "
+                    f"calls it {expected!r} — apply would skip creating it")
+        return problems
+
     def apply(self, spec: dict, only: set[str] | None = None) -> list[str]:
         log: list[str] = []
         want = only or {"policy", "standard"}
@@ -314,11 +373,16 @@ class PolicyProvisioner:
         resp = self.c.post(POLICIES, json_body=[body])   # bulk: bare array
 
         task_id = None
+        state = None
         if isinstance(resp, dict):
             task_id = (resp.get("task") or {}).get("id") or resp.get("job_id")
         if task_id:
             state = self._await_job(task_id, log)
-            if state and state not in ("successful", "partially_successful"):
+            # Only a hard failure aborts. `partial_success` still gets the
+            # recovery search, because the row may have committed — but if the
+            # search then finds nothing, the message says "rejected", not
+            # "search missed", which is the honest reading.
+            if state == "failed":
                 log.append(f"  ! policy {name}: job {task_id} ended {state}")
                 return None
 
@@ -336,9 +400,13 @@ class PolicyProvisioner:
                               policy_group_id=group_id)
             log.append(f"  + policy {name} -> {pid}")
         else:
-            log.append(f"  ! policy {name}: created but its id could not be "
-                       f"recovered by search. It may exist un-recorded — check the "
-                       f"UI before re-running, or destroy cannot remove it.")
+            hint = ("The job reported partial_success, so Alation most likely "
+                    "REJECTED this row rather than the search missing it — see "
+                    "the job errors above."
+                    if state in ("partial_success", "failed") else
+                    "It may exist un-recorded — check the UI before re-running, "
+                    "or destroy cannot remove it.")
+            log.append(f"  ! policy {name}: no id could be recovered. {hint}")
         return pid
 
     def _ensure_standard(self, s: dict, spec: dict,
@@ -432,14 +500,20 @@ class PolicyProvisioner:
                 resp = resp[0]
             last = resp or {}
             status = str(last.get("status") or "").lower()
-            if status in ("successful", "partially_successful", "failed"):
-                if status != "successful":
-                    # The job body carries per-row errors; without them a
-                    # partial success is indistinguishable from a full one.
+            state = str(last.get("state") or "").lower()
+
+            if state in TERMINAL_STATES or status in TERMINAL_STATUSES:
+                if status not in ("succeeded",):
+                    # A partial success means SOME rows committed. Which ones is
+                    # not in this body, so fetch the per-row errors — otherwise
+                    # "partial" is indistinguishable from "fine" and the missing
+                    # object looks like a search failure instead of a rejection.
                     detail = last.get("result") or last.get("msg") or last
-                    log.append(f"    (job {task_id} {status}: "
+                    log.append(f"    (job {task_id} {status or state}: "
                                f"{json.dumps(detail, default=str)[:300]})")
-                return status
+                    for line in self._job_errors(task_id):
+                        log.append(f"      {line}")
+                return status or state
             time.sleep(wait)
         log.append(f"    (job {task_id} STILL not terminal after "
                    f"{attempts * wait:.0f}s — last status "
@@ -475,11 +549,31 @@ class PolicyProvisioner:
         by_id = {str(p.get("id")): p for p in self._list_policies()}
         recorded_refs = set()
 
+        # What the SPEC says each ref should be called. A record can agree with
+        # the instance and still be wrong for this spec: if an earlier spec used
+        # the same ref with a different title, the stale record satisfies
+        # `_ensure_*` ("already ours") and the new object is never created —
+        # silently, because state-vs-instance still matches.
+        spec_titles = {p["ref"]: self.prefixed(p["title"])
+                       for p in spec.get("policies") or []}
+        spec_titles.update({
+            s["ref"]: self.prefixed(next(
+                (p["title"] for p in spec.get("policies") or []
+                 if p["ref"] == s.get("from_policy")), s["ref"]))
+            for s in spec.get("standards") or []})
+
         for rec in self.state.teardown_order(KIND_ORDER):
             if rec["kind"] != "policy":
                 continue
             recorded_refs.add(rec["ref"])
             rid, want = str(rec["id"]), (rec.get("name") or "")
+            expected = spec_titles.get(rec["ref"])
+            if expected and expected.strip().lower() != want.strip().lower():
+                log.append(f"  ! STALE RECORD {rec['ref']}: state says {want!r} "
+                           f"but this spec calls it {expected!r}. The record is "
+                           f"from an earlier spec, so `apply` skipped creating "
+                           f"the current one. Run `policy destroy` first.")
+                ok = False
             actual = by_id.get(rid)
             if actual is None:
                 log.append(f"  ! policy {want!r} recorded as id={rid}, but no "
@@ -513,6 +607,17 @@ class PolicyProvisioner:
             if token:
                 for rec in std_recs:
                     rid, want = rec["id"], (rec.get("name") or "")
+                    if rec["ref"] not in {s["ref"] for s in spec.get("standards") or []}:
+                        log.append(f"  ! ORPHAN RECORD {rec['ref']} (id={rid}, "
+                                   f"{want!r}) — not in this spec at all. Left "
+                                   f"over from an earlier one; `destroy` will "
+                                   f"remove it.")
+                        ok = False
+                    exp = spec_titles.get(rec["ref"])
+                    if exp and exp.strip().lower() != want.strip().lower():
+                        log.append(f"  ! STALE RECORD {rec['ref']}: state says "
+                                   f"{want!r} but this spec calls it {exp!r}")
+                        ok = False
                     try:
                         got = self.c.get(f"{STANDARDS}{rid}/",
                                          extra_headers={"CDEToken": token})
@@ -649,6 +754,108 @@ class PolicyProvisioner:
                 log.append(f"  + standard id={rid} {name!r} -> {now}")
         return log, ok
 
+    def _job_errors(self, task_id: Any, limit: int = 5) -> list[str]:
+        """Per-row errors for a bulk job. Best effort — never raises.
+
+        The job status body says a job partially succeeded but not which rows
+        failed or why. Without this, a rejected policy is indistinguishable from
+        one the recovery search simply missed.
+        """
+        try:
+            resp = self.c.get(f"{JOB_ERRORS}?job_id={task_id}")
+        except (AlationError, RuntimeError) as err:
+            return [f"! could not read job errors: {str(err)[:100]}"]
+        rows = resp if isinstance(resp, list) else (
+            resp.get("results") or resp.get("errors") or [] if isinstance(resp, dict) else [])
+        if not rows:
+            return ["(no per-row errors reported)"]
+        out = [f"! {json.dumps(r, default=str)[:200]}" for r in rows[:limit]]
+        if len(rows) > limit:
+            out.append(f"! ... and {len(rows) - limit} more")
+        return out
+
+    # -- assess (drift) ----------------------------------------------------
+    def assess(self, spec: dict, register: dict | None = None) -> tuple[list[str], dict]:
+        """Does the instance's governance cover what this spec requires?
+
+        Distinct from the PDE mapper's question. The mapper asks "does the
+        catalog hold the DATA this regulation needs?" This asks "does the
+        GOVERNANCE FRAMEWORK cover what the document says?" Same document,
+        different target — and until now nothing answered the second one, so a
+        re-run would have silently re-provisioned the same four policies.
+
+        Reads only. Reports four states per policy:
+          present  — in the spec and in the instance
+          missing  — in the spec, absent from the instance -> needs creating
+          untracked— in the instance but not recorded by this kit -> teardown
+                     will not remove it
+          orphaned — namespaced like ours, in the instance, absent from the spec
+                     -> the spec shrank, or the document changed
+
+        Plus, when a register is supplied, principles that drive CDEs but have
+        no policy at all: uncovered regulatory surface.
+        """
+        log: list[str] = []
+        summary = {"present": 0, "missing": 0, "untracked": 0, "orphaned": 0}
+
+        instance = {(p.get("title") or "").strip().lower(): p
+                    for p in self._list_policies()}
+        spec_titles: set[str] = set()
+
+        for pol in spec.get("policies") or []:
+            name = self.prefixed(pol["title"])
+            key = name.strip().lower()
+            spec_titles.add(key)
+            recorded = self.state.id_for("policy", pol["ref"])
+            found = instance.get(key)
+
+            if found and recorded:
+                log.append(f"  present   {name} (id={found.get('id')})")
+                summary["present"] += 1
+            elif found:
+                log.append(f"  untracked {name} (id={found.get('id')}) — exists but "
+                           f"this kit did not record creating it, so `destroy` "
+                           f"will leave it behind")
+                summary["untracked"] += 1
+            else:
+                log.append(f"  MISSING   {name} — the spec requires it and the "
+                           f"instance does not have it")
+                summary["missing"] += 1
+
+        # Orphans: only consider objects inside our namespace. Without a prefix
+        # every unrelated policy in the catalog would look orphaned, which would
+        # be a spectacularly unhelpful report in a real customer instance.
+        if self.prefix:
+            pref = self.prefix.strip().lower()
+            for key, pol in instance.items():
+                if key.startswith(pref) and key not in spec_titles:
+                    log.append(f"  ORPHANED  {pol.get('title')} (id={pol.get('id')}) "
+                               f"— namespaced like ours but not in the spec")
+                    summary["orphaned"] += 1
+        else:
+            log.append("  (no --prefix, so orphan detection is skipped — every "
+                       "unrelated policy in the catalog would match)")
+
+        if register:
+            from .authoring import register_facts
+            driven = set(register_facts(register)["paragraphs_by_principle"])
+            out_only: set[int] = set()
+            for entry in register.get("out_of_scope") or []:
+                if not entry.get("also_drives_cde"):
+                    out_only.update(x for x in (entry.get("principles") or [])
+                                    if isinstance(x, int))
+            covered = {(p.get("derived_from") or {}).get("principle")
+                       for p in spec.get("policies") or []}
+            gap = sorted(driven - covered - out_only)
+            summary["uncovered_principles"] = gap
+            if gap:
+                log.append(f"\n  UNCOVERED PRINCIPLES: {gap} drive CDEs in the "
+                           f"register but no policy in this spec addresses them. "
+                           f"Re-author the spec, or accept the gap explicitly.")
+            else:
+                log.append("\n  Every principle that drives a CDE has a policy.")
+        return log, summary
+
     # -- destroy -----------------------------------------------------------
     def destroy(self, dry_run: bool = True) -> list[str]:
         """Delete only recorded objects, in reverse dependency order, by ID."""
@@ -666,13 +873,59 @@ class PolicyProvisioner:
                 log.append(f"  - would delete standard {rec['name']} (id={rec['id']})")
                 continue
             try:
-                self.c.delete(f"{STANDARDS}{rec['id']}/",
-                              extra_headers={"CDEToken": self.cde_token()})
+                token = self.cde_token()
             except (AlationError, RuntimeError) as err:
-                log.append(f"  ! standard {rec['name']}: {str(err)[:140]}")
+                log.append(f"  ! standard {rec['name']}: CDE service unavailable, "
+                           f"not deleted ({str(err)[:100]})")
                 continue
-            self.state.forget("standard", rec["ref"])
-            log.append(f"  - deleted standard {rec['name']} (id={rec['id']})")
+
+            # A PUBLISHED standard cannot be deleted — it is in force. Walk it
+            # back to DRAFT first, which STATUS_EDGES already says is legal from
+            # both PUBLISHED and PENDING_APPROVAL. Publishing during a demo and
+            # then tearing down is the normal path, so this is the common case,
+            # not an edge case.
+            try:
+                current = (self.c.get(f"{STANDARDS}{rec['id']}/",
+                                      extra_headers={"CDEToken": token})
+                           or {}).get("status")
+            except (AlationError, RuntimeError):
+                current = None
+
+            if current and str(current).upper() != "DRAFT":
+                for hop in (status_path(str(current), "DRAFT") or []):
+                    try:
+                        self.c.post(f"{STANDARDS}{rec['id']}/status/",
+                                    json_body={"new_status": hop,
+                                               "comment": "Teardown by agentkit"},
+                                    extra_headers={"CDEToken": token})
+                        log.append(f"    (standard id={rec['id']} {current} -> {hop} "
+                                   f"so it can be deleted)")
+                        current = hop
+                    except (AlationError, RuntimeError) as err:
+                        log.append(f"  ! standard {rec['name']}: could not move "
+                                   f"{current} -> {hop} for deletion: "
+                                   f"{str(err)[:120]}")
+                        break
+
+            try:
+                self.c.delete(f"{STANDARDS}{rec['id']}/",
+                              extra_headers={"CDEToken": token})
+            except (AlationError, RuntimeError) as err:
+                log.append(f"  ! standard {rec['name']} (id={rec['id']}) NOT "
+                           f"deleted: {str(err)[:160]}")
+                continue
+
+            # Read back, for the same reason as policies: a 2xx is not proof.
+            try:
+                self.c.get(f"{STANDARDS}{rec['id']}/",
+                           extra_headers={"CDEToken": token})
+            except (AlationError, RuntimeError):
+                self.state.forget("standard", rec["ref"])
+                log.append(f"  - deleted standard {rec['name']} (id={rec['id']})")
+            else:
+                log.append(f"  ! standard {rec['name']} (id={rec['id']}) STILL "
+                           f"READABLE after delete. Keeping the state record so "
+                           f"teardown can retry.")
 
         if policies:
             ids = [int(r["id"]) for r in policies if str(r["id"]).isdigit()]
@@ -682,13 +935,44 @@ class PolicyProvisioner:
             elif ids:
                 # DELETE is synchronous and takes {"ids": [...]} — one call.
                 try:
-                    self.c.request("DELETE", POLICIES, json_body={"ids": ids})
+                    resp = self.c.request("DELETE", POLICIES, json_body={"ids": ids})
                 except (AlationError, RuntimeError) as err:
                     log.append(f"  ! deleting policies {ids}: {str(err)[:160]}")
                 else:
+                    # READ BACK. A 2xx is not proof of deletion: this endpoint
+                    # answers 204 with an empty body, and the list endpoint has a
+                    # `deleted` query parameter, which implies Alation may be
+                    # SOFT-deleting. Forgetting a record for an object that still
+                    # exists is the worst outcome — it becomes permanently
+                    # invisible to teardown.
+                    still: dict[str, dict] = {}
+                    try:
+                        after = {str(p.get("id")): p for p in self._list_policies()}
+                        # Key by STRING throughout: `ids` holds ints while the
+                        # records hold strings, and mixing them means the
+                        # survivor check silently never matches.
+                        still = {str(i): after[str(i)] for i in ids
+                                 if str(i) in after}
+                    except (AlationError, RuntimeError) as err:
+                        log.append(f"  ? could not confirm deletion "
+                                   f"({str(err)[:100]}); state left intact")
+                        still = {str(i): {} for i in ids}
+
                     for r in policies:
+                        if str(r["id"]) in still:
+                            log.append(
+                                f"  ! policy {r['name']} (id={r['id']}) STILL "
+                                f"PRESENT after DELETE returned success. Alation "
+                                f"may be soft-deleting, or the id was ignored. "
+                                f"Keeping the state record so teardown can retry — "
+                                f"delete it in the UI if it is really gone.")
+                            continue
                         self.state.forget("policy", r["ref"])
                         log.append(f"  - deleted policy {r['name']} (id={r['id']})")
+                    if still:
+                        log.append(f"  ! {len(still)} of {len(ids)} policies survived "
+                                   f"the delete. Response body was: "
+                                   f"{json.dumps(resp, default=str)[:200]}")
 
         for rec in other:
             log.append(f"  ? {rec['kind']} {rec['name']}: no delete rule, left alone")

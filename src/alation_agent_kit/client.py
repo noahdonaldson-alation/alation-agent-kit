@@ -167,7 +167,7 @@ class AlationClient:
             yield from resp.iter_lines(decode_unicode=True)
 
     # -- convenience -------------------------------------------------------
-    def catalog_token(self) -> str | None:
+    def catalog_token(self, force_refresh: bool = False) -> str | None:
         """The legacy API access token, minted from the refresh token if needed.
 
         Exposed because the CDE service sits on a third path prefix
@@ -175,7 +175,7 @@ class AlationClient:
         must ask for the token explicitly rather than relying on `_headers`.
         Returns None when no credential is configured.
         """
-        return self._catalog_tokens.token()
+        return self._catalog_tokens.token(force_refresh=force_refresh)
 
     def get(self, path: str, **kw) -> Any:
         return self.request("GET", path, **kw)

@@ -13,6 +13,10 @@ The important asymmetries, learned the hard way from the API spec:
 
 from __future__ import annotations
 
+import json
+import os
+import re
+
 from typing import Any
 
 from .client import AI_V1, AlationClient, AlationError
@@ -29,6 +33,35 @@ _CREATE_FIELDS = {
     "parameter_bindings", "llm_extra_config", "input_json_schema",
     "output_json_schema", "mcp_server_config_ids", "tags",
 }
+
+
+def _expand_env(obj: Any) -> Any:
+    """Substitute ${VAR} from the environment, recursively.
+
+    Tool configs need an OAuth client_id and client_secret. Those must NOT live
+    in a committed file, so the file carries ${ALATION_CLIENT_SECRET} and the
+    value is filled at deploy time from .env — same secrets, one place.
+
+    A missing variable raises rather than sending the literal "${VAR}" to
+    Alation, which would otherwise be stored as a credential and fail later with
+    an opaque auth error.
+    """
+    if isinstance(obj, dict):
+        return {k: _expand_env(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_expand_env(v) for v in obj]
+    if isinstance(obj, str):
+        def sub(m):
+            name = m.group(1)
+            val = os.environ.get(name, "").strip()
+            if not val:
+                raise RuntimeError(
+                    f"tool config references ${{{name}}} but it is not set in the "
+                    f"environment or .env. Set it before deploying — sending the "
+                    f"literal placeholder would store a broken credential.")
+            return val
+        return re.sub(r"\$\{([A-Z_][A-Z0-9_]*)\}", sub, obj)
+    return obj
 
 
 def _as_list(payload: Any) -> list[dict]:
@@ -49,8 +82,86 @@ class AgentStudio:
     def list_agents(self) -> list[dict]:
         return _as_list(self.c.get(AGENT_PATH))
 
-    def list_tools(self) -> list[dict]:
-        return _as_list(self.c.get(TOOL_PATH))
+    # Verified from the AI API OpenAPI spec (2026.7.1.0): GET /config/tool takes
+    # only limit / offset / visibility_labels, and visibility_labels DEFAULTS to
+    # ["featured", "regular"] — so a bare GET silently hides `advanced` and
+    # `alation_internal` tools. That default is very likely why
+    # get_asset_content_tool looked absent. Ask for all four.
+    VISIBILITY_LABELS = ("featured", "regular", "advanced", "alation_internal")
+
+    def list_tools(self, all_visibilities: bool = True,
+                   limit: int = 1000) -> list[dict]:
+        params: dict = {"limit": limit}
+        if all_visibilities:
+            params["visibility_labels"] = list(self.VISIBILITY_LABELS)
+        return _as_list(self.c.get(TOOL_PATH, params=params))
+
+    def resolve_tool_id(self, name: str) -> str | None:
+        """Name -> id. The list endpoint has no name filter, so match client-side.
+
+        Matches `name` or `function_name`, since a file may sensibly key on
+        either. Ids are UUID strings here, not ints.
+        """
+        want = (name or "").strip().lower()
+        hits = [t for t in self.list_tools()
+                if want in {str(t.get("name") or "").strip().lower(),
+                            str(t.get("function_name") or "").strip().lower()}]
+        if len(hits) > 1:
+            raise RuntimeError(
+                f"{len(hits)} tools match {name!r} — names are not unique "
+                f"server-side. Ids: {[h.get('id') for h in hits]}")
+        return hits[0].get("id") if hits else None
+
+    def deploy_tool(self, doc: dict, dry_run: bool = False) -> dict:
+        """Upsert a custom tool from a file. Tools are PUT; agents are PATCH.
+
+        Schema notes, all verified against the OpenAPI spec — each one is a trap:
+          * `tool_type` values are LOWERCASE (`http`), while `auth_type` and
+            `method` are UPPERCASE. Three casing conventions in one body.
+          * Required: name, description, function_name, tool_type. An HTTP tool
+            additionally needs http_config, auth_config AND
+            input_parameter_schema — even a no-auth tool must send
+            `auth_config: {"name": ..., "auth_type": "NONE"}`.
+          * `ToolConfigCreate` is `additionalProperties: false`, so `$comment`
+            and `visibility_label` are both 422s. Visibility is readable but not
+            settable through the public API.
+          * Secrets do NOT round-trip: a read returns `custom_headers_preview`
+            and truncated `client_secret`, so an exported tool cannot be
+            re-deployed without re-supplying them.
+        """
+        body = _expand_env(
+            {k: v for k, v in doc.items() if not k.startswith("$")})
+        body.pop("visibility_label", None)      # read-only; sending it is a 422
+        body.pop("id", None)
+
+        for field in ("name", "description", "function_name", "tool_type"):
+            if not body.get(field):
+                raise ValueError(f"tool file is missing required {field!r}")
+        if body.get("tool_type") == "http":
+            for field in ("http_config", "auth_config", "input_parameter_schema"):
+                if not body.get(field):
+                    raise ValueError(
+                        f"an http tool needs {field!r} — the API rejects it "
+                        f"otherwise (a public endpoint still needs "
+                        f"auth_config with auth_type NONE)")
+
+        name = body["name"]
+        existing = self.resolve_tool_id(name) if not dry_run else None
+        if dry_run:
+            print(f"[dry-run] tool {name!r} ({body['tool_type']}) "
+                  f"{body.get('http_config', {}).get('method', '')} "
+                  f"{body.get('http_config', {}).get('url', '')}")
+            print(f"[dry-run] fields: {sorted(body)}")
+            return {"dry_run": True, "name": name}
+
+        if existing:
+            updated = self.c.put(f"{TOOL_PATH}/{existing}", json_body=body)
+            print(f"Updated tool {name!r} (id={existing})")
+            return updated
+        created = self.c.post(TOOL_PATH, json_body=body)
+        tid = created.get("id") if isinstance(created, dict) else None
+        print(f"Created tool {name!r} (id={tid})")
+        return created
 
     def list_llms(self) -> list[dict]:
         return _as_list(self.c.get(LLM_PATH))
@@ -180,10 +291,23 @@ class AgentStudio:
         return canonicalize_agent(doc) if canonical else doc
 
     # -- write -------------------------------------------------------------
+    @staticmethod
+    def _sendable(doc: dict) -> dict:
+        """Drop `$`-prefixed keys before writing.
+
+        Agent files carry `$comment` to explain non-obvious choices — the whole
+        point of files-as-source-of-truth. Alation's request models are strict
+        (`extra_forbidden`), so those keys must not travel. `patch_body` already
+        filters to _CREATE_FIELDS; this is for the /import fallback, which sends
+        the file as-is and 422'd on `$comment`.
+        """
+        return {k: v for k, v in doc.items() if not k.startswith("$")}
+
     def import_agent(self, export_doc: dict) -> dict:
         """Create a NEW agent from an export payload. Never use this to update —
         it will clone. Returns {"agent": ..., "warnings": [...]}"""
-        result = self.c.post(f"{AGENT_PATH}/import", json_body=export_doc)
+        result = self.c.post(f"{AGENT_PATH}/import",
+                             json_body=self._sendable(export_doc))
         agent = result.get("agent", result) if isinstance(result, dict) else result
         name, agent_id = agent.get("name"), agent.get("id")
         if name and agent_id:
@@ -272,6 +396,18 @@ class AgentStudio:
         # /import only if the config path rejects the body — import needs full
         # inline tool definitions, so it suits cross-instance seeding rather
         # than creating against an instance that already has the tools.
+        # `tool_config_ids` is REQUIRED on create even for a tool-less agent —
+        # verified 2026-08-27: omitting it gives
+        # 422 {"type":"missing","loc":["body","tool_config_ids"]}. An empty list
+        # is the correct value, and resolution above only sets it when `tools` is
+        # non-empty, so default it here.
+        #
+        # CREATE ONLY. On PATCH, sending tool_config_ids=[] would CLEAR an
+        # agent's tools — PATCH replaces rather than merges (proven earlier with
+        # input_json_schema), so a "harmless" default there would silently strip
+        # the tools off a working agent.
+        patch_body.setdefault("tool_config_ids", [])
+
         missing = [f for f in ("prompt", "llm_config_id") if not patch_body.get(f)]
         if missing:
             raise RuntimeError(
@@ -282,7 +418,13 @@ class AgentStudio:
         try:
             created = self.c.post(AGENT_PATH, json_body=patch_body)
         except AlationError as err:
-            print(f"  ! POST {AGENT_PATH} failed ({err.status}); trying /import")
+            # Print the BODY, not just the status. Reporting only "failed (422)"
+            # and then falling back means a second, unrelated error becomes the
+            # one the user sees — which is exactly how the $comment failure
+            # masked whatever the config path actually objected to.
+            print(f"  ! POST {AGENT_PATH} failed ({err.status}): "
+                  f"{json.dumps(err.body, default=str)[:600]}")
+            print(f"  ! falling back to /import (needs full inline tool defs)")
             result = self.import_agent(export_doc)
             agent = result.get("agent", result) if isinstance(result, dict) else result
             print(f"Created agent {name!r} via import (id={agent.get('id')})")
