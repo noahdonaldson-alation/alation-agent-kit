@@ -1,0 +1,58 @@
+{
+  "$comment": [
+    "NEW 2026-08-28. Built because Alation's own `Fetch DQ Standards` cannot do",
+    "this job: its input schema is empty (properties: {}, additionalProperties",
+    "false), it reads table_metadata off the conversation payload rather than",
+    "from arguments, it returns candidate checks grouped by column_id, and it is",
+    "alation_internal — invisible in Agent Studio without an FDE flip. It is a",
+    "purpose-built helper for a DQ recommendation agent, coupled to that agent's",
+    "input contract. Do not mistake it for a standards reader.",
+    "",
+    "WHAT DEPENDS ON THIS: the reconciler agent, and the lifecycle Flow. A",
+    "PUBLISHED overlay standard can be edited but NOT deleted, so before anything",
+    "creates a standard, something has to read what already exists and fuzzy-match",
+    "against it. This is that read. Getting it wrong leaves permanent objects in a",
+    "customer instance.",
+    "",
+    "GET on the same base path the create tool POSTs to, with the same auth block",
+    "— which the kit has already proven answers 200 (`policy standards` reads it).",
+    "Note that success there was with bearer AND CDEToken; this tool sends bearer",
+    "only, same open question as the create tool.",
+    "",
+    "The response carries each standard's integer `id` and UUID `key`. The",
+    "id-taking path is /standard/{id}/, so an agent reasoning about updates must",
+    "use the integer. Standards also carry `status` — only PUBLISHED ones are",
+    "applied by CDM, so a DRAFT standard is not yet governing anything and the",
+    "reconciler must report the status, not just existence."
+  ],
+
+  "name": "Fetch CDE Overlay Standards",
+  "function_name": "fetch_cde_overlay_standards",
+  "tool_type": "http",
+
+  "description": "List the CDE overlay standards that exist in this Alation instance, with their integer id, name, purpose, scope, status, source policy and full derived_requirements. Use this before creating any standard, to check whether an equivalent one already exists — a published standard can be edited but never deleted, so creating a duplicate is permanent. Also use it to compare what a regulation now requires against what the instance already governs. Status matters: only PUBLISHED standards are applied by CDM, so a DRAFT standard exists but is not yet governing anything.",
+
+  "http_config": {
+    "method": "GET",
+    "url": "${ALATION_BASE_URL}/cde-service/integration/standard/",
+    "timeout_seconds": 60
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "description": "Maximum standards to return. Default 50."
+      }
+    }
+  }
+}

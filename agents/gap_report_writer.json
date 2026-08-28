@@ -1,0 +1,30 @@
+{
+  "$comment": "Step 3 of the Flow. Exists because Alation Flows have no transform node \u2014 NodeType is exactly {type_start, type_agent, type_tool} \u2014 so rendering JSON as markdown has to be done by a model. Tool-less and catalog-blind on purpose: it renders findings it was handed and must not be able to look anything up, because a lookup would let it add facts the gap analysis never established.",
+  "name": "gap_report_writer",
+  "description": "Renders a catalog gap analysis (JSON from bcbs239_pde_mapper) as a markdown report for a data governance lead: coverage table worst-status-first, what to bind each critical data element to, the data quality monitors proposed with their thresholds and paragraph authority, and what is blocked and why. Presentation only \u2014 adds no findings, recomputes no counts, and never invents a table, column or citation.",
+  "input_json_schema": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "type": "string",
+        "description": "The gap-analysis JSON from bcbs239_pde_mapper. In a Flow this arrives as a reference to the previous node's output; the message slot has no size cap. ~40KB is normal."
+      }
+    },
+    "required": [
+      "message"
+    ]
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "mode": "tool_call",
+  "tools": [],
+  "published_status": "draft",
+  "tags": [
+    "bcbs239",
+    "reporting",
+    "agent-kit"
+  ]
+}

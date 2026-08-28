@@ -1,0 +1,68 @@
+{
+  "$comment": [
+    "THE SAFE ONE. Build and deploy this first — it has no unknowns.",
+    "",
+    "WHY THIS WORKS WHERE CREATE DOES NOT: DELETE is the only business-policy",
+    "write that takes a JSON OBJECT rather than a bare array —",
+    "`{\"ids\": [1,2,3]}`, synchronous, 204, no bulk job. An Agent Studio HTTP",
+    "tool's request body IS the tool-call arguments object (HTTPConfigCreate has",
+    "only url/method/timeout_seconds and is additionalProperties:false, so there",
+    "is no body field and no templating layer). An object body therefore maps",
+    "onto the named-parameter model exactly, with nothing to reshape.",
+    "",
+    "Consequence worth stating plainly: as the product stands, an agent can be",
+    "given the ability to DELETE business policies but not to create them. Treat",
+    "that asymmetry as a reason to scope who gets this tool, not as a curiosity.",
+    "",
+    "NO NAMESPACE GUARD IS POSSIBLE HERE. The endpoint takes ids, so nothing in",
+    "this tool can enforce the `BCBS239 - ` prefix. The guard has to live in the",
+    "agent's prompt: resolve titles with Find Business Policies first, delete",
+    "only ids whose title carries our prefix, and never pass an id the agent did",
+    "not itself just resolve. A hallucinated integer here deletes a customer's",
+    "real policy. This is exactly why the kit deletes by RECORDED id from a state",
+    "file — an agent has no equivalent ledger, so in chat the human is the ledger.",
+    "",
+    "AUTH: CLIENT_CREDENTIALS, the OAuth bearer alone. Do NOT add a TOKEN header",
+    "alongside it — Alation authenticates as the TOKEN's user, so a token minted",
+    "for the wrong user_id turns a working call into a 403.",
+    "",
+    "SECRETS DO NOT ROUND-TRIP: ${ALATION_CLIENT_SECRET} is filled from .env at",
+    "deploy time by _expand_env; a read returns it truncated to '****YjE1'."
+  ],
+
+  "name": "Delete Business Policies",
+  "function_name": "delete_business_policies",
+  "tool_type": "http",
+
+  "description": "Permanently delete Alation Policy Center business policies by their integer ids. Synchronous — a 204 means the deletion committed. DESTRUCTIVE AND IRREVERSIBLE. Only ever pass ids you have just resolved with Find Business Policies and whose titles you have read and confirmed carry the expected namespace prefix. Never pass an id you inferred, remembered or constructed. If you are unsure whether a policy is one of ours, do not delete it — report the title and id and ask.",
+
+  "http_config": {
+    "method": "DELETE",
+    "url": "${ALATION_BASE_URL}/integration/v1/business_policies/",
+    "timeout_seconds": 30
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "properties": {
+      "ids": {
+        "type": "array",
+        "description": "Integer ids of the policies to delete. Each id must have come from a Find Business Policies result in this same conversation, with its title read and confirmed. Do not construct or guess ids.",
+        "items": {
+          "type": "integer"
+        }
+      }
+    },
+    "required": [
+      "ids"
+    ]
+  }
+}

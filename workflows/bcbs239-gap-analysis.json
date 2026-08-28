@@ -1,0 +1,69 @@
+{
+  "$comment": "BCBS 239 gap analysis as an Agent Studio Flow, so an SE runs it from the Alation UI and reads the result in the flow's Runs tab. Three agent steps after the start node; execution is sequential and each step runs exactly once. `agent` is a NAME here \u2014 the kit resolves it to the instance's UUID at deploy time and writes agent_id, because ids are per-instance and cannot be committed. The regulation text is a static input so the demo is one click; when unstructured ingestion lands, step 1 becomes a type_tool node calling get_asset_content and this static goes away. AGENT OUTPUT KEY: an agent node's output is keyed `__agent_output__`, NOT `result`. The OpenAPI example uses `result` and taking it literally fails at runtime with \"Key 'result' not found in node '<id>' output\" \u2014 verified 2026-08-28. Workflow validation is runtime-only, so the flow saved cleanly and only failed on execution. A PDF step was tried and REMOVED 2026-08-28: the Generate PDF tool returns base64 bytes to the calling agent, and an agent node's output is only its text, so the document never surfaces anywhere reachable in a flow run. The step produced a sentence saying a 7-page PDF had been generated, and nothing you could open. PDF generation belongs in chat, where assets surface \u2014 and Alation already ships `Generate PDF from a Chat` for that.",
+  "name": "BCBS239 - Gap Analysis",
+  "description": "Reads BCBS 239, derives the critical data elements and data quality requirements it implies, checks this catalog for them, and writes a governance report. Step 3 output is the machine-readable analysis that will drive CDE and DQ monitor creation; step 4 is the human-readable report.",
+  "definition": {
+    "nodes": [
+      {
+        "id": "start",
+        "type": "type_start",
+        "data": {
+          "inputs": {},
+          "config": {
+            "description": "Run to assess this catalog against BCBS 239."
+          }
+        }
+      },
+      {
+        "id": "interpret",
+        "type": "type_agent",
+        "data": {
+          "inputs": {
+            "message": {
+              "type": "static",
+              "value": "__REGULATION_TEXT__"
+            }
+          },
+          "config": {
+            "agent": "bcbs239_cde_dq_interpreter",
+            "description": "Interpret BCBS 239 into a requirements register: critical data elements and DQ requirements, cited to paragraphs."
+          }
+        }
+      },
+      {
+        "id": "map",
+        "type": "type_agent",
+        "data": {
+          "inputs": {
+            "message": {
+              "type": "reference",
+              "node_id": "interpret",
+              "output_key": "__agent_output__"
+            }
+          },
+          "config": {
+            "agent": "bcbs239_pde_mapper",
+            "description": "Search this catalog for each element and report what exists, what is partial, and what is absent \u2014 with evidence."
+          }
+        }
+      },
+      {
+        "id": "report",
+        "type": "type_agent",
+        "data": {
+          "inputs": {
+            "message": {
+              "type": "reference",
+              "node_id": "map",
+              "output_key": "__agent_output__"
+            }
+          },
+          "config": {
+            "agent": "gap_report_writer",
+            "description": "Render the analysis as a markdown governance report."
+          }
+        }
+      }
+    ]
+  }
+}

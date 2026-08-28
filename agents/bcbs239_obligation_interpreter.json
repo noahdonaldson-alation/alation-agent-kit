@@ -1,0 +1,36 @@
+{
+  "$comment": "Shape copied from agents/bcbs239_cde_dq_interpreter.json, which was verified against a live instance via ./run.sh export on 2026-08-24. The llm block is the real shape: for a default LLM config the model comes from `default_llm_ref` (a composite provider:model string) and `model_name` is null — they are alternatives, not companions. Deploy resolves `llm` to llm_config_id and `tools` to tool_config_ids at push time. NOTE: `$comment` keys are stripped before any write — Alation's request models are strict and /config/agent/import returns 422 extra_forbidden on them.",
+  "description": "Reads a regulation (normally BCBS 239) and identifies the OBLIGATIONS it places on the bank — one per principle — with paragraph-level citations, the data concepts the text names, and the measurable expectations that must survive into a policy body. Input is the regulation text as the message; output is a JSON obligation register for human review. Deliberately does NOT identify Critical Data Elements: that step runs later against the published standard, because Alation derives a standard from a policy and a CDE inherits from the standard. Interpretation only — it reads nothing from the catalog and creates nothing.",
+  "input_json_schema": {
+    "properties": {
+      "message": {
+        "description": "Text of the regulation, normally the bank-facing principles 1-11 from artifacts/bcbs239/bank_principles.txt. Send them together, not one principle at a time — the governable/out-of-scope procedure and the cross-cutting obligations both require seeing every principle at once.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "type": "object"
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "llm_extra_config": null,
+  "mode": "tool_call",
+  "name": "bcbs239_obligation_interpreter",
+  "output_json_schema": null,
+  "parameter_bindings": [],
+  "prompt": "PLACEHOLDER — populated at deploy time from prompts/bcbs239_obligation_interpreter.md via `./run.sh deploy agents/bcbs239_obligation_interpreter.json --prompt bcbs239_obligation_interpreter`. Do not edit this field by hand; the .md file is the source of truth. The deployed prompt round-trips byte-identical to that file apart from a stripped trailing newline.",
+  "published_status": "draft",
+  "skill_names": [],
+  "tags": [
+    "bcbs239",
+    "policy",
+    "governance",
+    "agent-kit"
+  ],
+  "tools": []
+}

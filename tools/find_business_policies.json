@@ -1,0 +1,61 @@
+{
+  "$comment": [
+    "Recovered from finance-industry.mtse 2026-08-28 via `tool show --raw`, after",
+    "the cleanup pass deleted this file while the tool was live. See",
+    "tools/README.md for how that happened.",
+    "",
+    "WHY A CUSTOM TOOL AT ALL: none of Alation's 79 base tools reads Policy",
+    "Center. Business policies are created through a bulk endpoint that returns",
+    "a task id and NO object ids, so an id can only be recovered by searching",
+    "the namespaced title afterwards — which is exactly what this wraps.",
+    "",
+    "AUTH: CLIENT_CREDENTIALS, i.e. the OAuth bearer alone. Verified separately",
+    "that the bearer works on /integration/v1/ — the earlier 403 on that path",
+    "was Policy Center being disabled, not an auth-surface difference. Do NOT",
+    "add a TOKEN header alongside it: Alation authenticates as the TOKEN's user,",
+    "so a token minted for the wrong user_id turns a working call into a 403.",
+    "",
+    "SECRETS DO NOT ROUND-TRIP. A read returns client_secret truncated to",
+    "'****YjE1', so ${ALATION_CLIENT_SECRET} is filled from .env at deploy time",
+    "by _expand_env. A missing var raises rather than storing the literal",
+    "placeholder as a credential.",
+    "",
+    "use_pkce was true on the recovered config. PKCE belongs to the",
+    "authorization-code flow, not client credentials, so it is almost certainly",
+    "an inert default — omitted here rather than carried forward as cargo."
+  ],
+
+  "name": "Find Business Policies",
+  "function_name": "find_business_policies",
+  "tool_type": "http",
+
+  "description": "Search Alation Policy Center business policies by title text and return their integer ids, titles and descriptions. Use this before creating a CDE overlay standard, to find the id of the policy the standard derives from. Returns a list; match the title exactly rather than assuming the first result is right.",
+
+  "http_config": {
+    "method": "GET",
+    "url": "${ALATION_BASE_URL}/integration/v1/business_policies/",
+    "timeout_seconds": 30
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "properties": {
+      "search": {
+        "type": "string",
+        "description": "Title text to search for, e.g. 'BCBS239'. Omit to list all."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum policies to return. Default 100."
+      }
+    }
+  }
+}

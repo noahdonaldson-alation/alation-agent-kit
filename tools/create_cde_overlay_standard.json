@@ -1,0 +1,141 @@
+{
+  "$comment": [
+    "Recovered from finance-industry.mtse 2026-08-28 via `tool show --raw`, after",
+    "the cleanup pass deleted this file while the tool was live. tools/README.md",
+    "records how that happened.",
+    "",
+    "WHY THIS TOOL IS THE LOAD-BEARING ONE: policies cannot be created by an",
+    "agent — the bulk endpoint takes a BARE ARRAY body and an HTTP tool can only",
+    "send an object assembled from its parameter schema. Standards have an",
+    "object body, so they CAN. That single difference is why standard creation",
+    "lives in Agent Studio and policy creation stays in the terminal.",
+    "",
+    "AUTH — the interesting part. auth_type is CLIENT_CREDENTIALS with no custom",
+    "headers, so this tool sends ONLY the OAuth bearer to /cde-service/. The kit",
+    "has never done that: client._headers() always adds the bearer AND",
+    "policies.py adds CDEToken on top, so every successful CDE-service call in",
+    "this project sent both credentials and never isolated which one worked.",
+    "An HTTP tool CANNOT do the CDEToken bootstrap — that is a two-call exchange",
+    "(POST /cde-service/integration/auth/ with a TOKEN header, then the result as",
+    "CDEToken) and the four auth types are NONE(+custom_headers) / BASIC /",
+    "CLIENT_CREDENTIALS / AUTHORIZATION_CODE. So this tool only works if the",
+    "bearer alone suffices.",
+    "IS THAT TRUE? UNPROVEN. The recovered config had has_oauth_token: false and",
+    "was built for an agent that was never deployed, so it has probably never",
+    "been invoked. Hit `Test tool` in the UI before trusting it. If it 401s, the",
+    "CDE service needs CDEToken and agent-driven standard creation is blocked",
+    "the same way policy creation is — which would be a significant finding.",
+    "",
+    "SCHEMA: verified against StandardCreationRequest (CDE 2026.4.0-0). The key",
+    "is allowed_values, NOT accepted_values — our invented name is what produced",
+    "400 'Invalid structure of Overlay standard', and that 400 is a hand-rolled",
+    "pre-validation check so it carries no loc pointer to the offending field.",
+    "",
+    "A created standard lands in DRAFT and CDM does not apply it until published.",
+    "Publishing is a state machine: DRAFT -> PENDING_APPROVAL -> PUBLISHED, and",
+    "DRAFT -> PUBLISHED is refused. A PUBLISHED standard can be edited but NOT",
+    "deleted, which is why the reconciler must run before this tool ever fires.",
+    "",
+    "Secrets do not round-trip; ${ALATION_CLIENT_SECRET} is filled from .env at",
+    "deploy time by _expand_env."
+  ],
+
+  "name": "Create CDE Overlay Standard",
+  "function_name": "create_cde_overlay_standard",
+  "tool_type": "http",
+
+  "description": "Create an Alation CDE overlay standard (a Template Overlay) derived from an existing business policy. The standard defines the attestation fields a data steward must answer for each critical data element governed by that policy. Returns the new standard's integer id and UUID key immediately. The standard is created in DRAFT status and is not applied by CDM until published. Requires the source policy to already exist in Policy Center — pass its integer id in sources. A published standard cannot be deleted, so confirm with the user that this standard does not already exist before calling.",
+
+  "http_config": {
+    "method": "POST",
+    "url": "${ALATION_BASE_URL}/cde-service/integration/standard/",
+    "timeout_seconds": 60
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "required": ["name", "purpose", "scope", "derived_requirements"],
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Standard name. Use the same name as its source policy, including any namespace prefix (e.g. 'BCBS239 - Risk Data Completeness')."
+      },
+      "purpose": {
+        "type": "string",
+        "description": "Why these attestations exist and what is unknowable without them. State what breaks if the answers are absent."
+      },
+      "scope": {
+        "type": "string",
+        "description": "Which critical data elements this standard applies to."
+      },
+      "sources": {
+        "type": "array",
+        "description": "The business policy this standard derives from. Optional in the API but a Template Overlay is meant to derive from a policy, so always send it.",
+        "items": {
+          "type": "object",
+          "required": ["id", "name", "source_key"],
+          "properties": {
+            "id": {"type": "integer", "description": "The policy's integer id."},
+            "name": {"type": "string"},
+            "source_key": {
+              "type": "string",
+              "description": "URN of the form alation://business_policy/<id>."
+            }
+          }
+        }
+      },
+      "derived_requirements": {
+        "type": "array",
+        "description": "Groups of attestation questions a steward answers per data element.",
+        "items": {
+          "type": "object",
+          "required": ["name", "fields"],
+          "properties": {
+            "name": {"type": "string"},
+            "description": {
+              "type": "string",
+              "description": "What this requirement establishes, citing the source paragraph."
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "type"],
+                "properties": {
+                  "name": {"type": "string"},
+                  "type": {
+                    "type": "string",
+                    "enum": ["picker", "text"],
+                    "description": "'picker' for a fixed answer list, 'text' for free evidence. No other values are known to work."
+                  },
+                  "allowed_values": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "REQUIRED for type 'picker', and must not be set for 'text'. Include an honest negative option ('No', 'Not tested') — a picker that cannot record failure is not a control. NOTE the key is allowed_values, not accepted_values."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {
+        "type": "object",
+        "properties": {
+          "allow_duplicates": {
+            "type": "boolean",
+            "description": "Leave false so a re-run cannot silently create a second standard with the same name."
+          }
+        }
+      }
+    }
+  }
+}
