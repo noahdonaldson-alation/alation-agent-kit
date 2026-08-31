@@ -1,3 +1,19 @@
+# RETIRED 2026-08-31. The agent is deleted from finance-industry.mtse and
+# agents/policy_author.json is gone, so this prompt cannot be deployed.
+#
+# Retired by decision, not by failure. It emitted policies AND standards; CDM
+# now generates standards from the policy prose, and the obligation path
+# (bcbs239_obligation_interpreter -> policy_body_author -> policy assemble)
+# replaced the policy half with a design where citations are pointers rather
+# than transcription.
+#
+# THIS FILE IS KEPT AS EVIDENCE, and it is the reason that design exists. The
+# changelog below records the measurement: this prompt quoted BCBS 239 from
+# training knowledge rather than from its input, accurately enough to be
+# indistinguishable from a real citation, and a prompt instruction reduced it
+# from 4 occurrences to 2 without eliminating it. That is what "instruction is
+# not a guarantee" cost, in numbers. Do not delete it to tidy up.
+
 name: policy_author
 purpose: >
   Turns a validated requirements register into a provisionable Alation policy

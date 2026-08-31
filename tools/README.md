@@ -39,7 +39,7 @@ capability we have.
 | Tool | `function_name` | `tool_type` | What depends on it |
 |---|---|---|---|
 | `Find Business Policies` | `find_business_policies` | `http` | The lifecycle Flow's read path. It is the only way an agent can resolve a policy title to its integer id — **and it is the safety guard on the delete tool below.** |
-| `Create CDE Overlay Standard` | `create_cde_overlay_standard` | `http` | Standard creation from chat — the reason the setup half is not wholly terminal-bound. |
+| ~~`Create CDE Overlay Standard`~~ | `create_cde_overlay_standard` | `http` | **RETIRED 2026-08-31 and deleted from the instance.** Retired *by decision, not by failure*: CDM creates overlay standards in the UI, with its own AI deriving the requirements from the policy prose, and creating one through this tool would bypass the generation that makes the standard worth having. The file stays as the record of a working `/cde-service/` POST config. **Do not redeploy it** without re-opening that decision. |
 | `Fetch CDE Overlay Standards` | `fetch_cde_overlay_standards` | `http` | Reading published standards; the lifecycle Flow's coverage check. |
 | `Delete Business Policies` | `delete_business_policies` | `http` | Teardown from chat. **`DELETE` is the only business-policy write that takes an object** (`{"ids": [...]}`, synchronous, 204), which is why this one is buildable and create is not. |
 
