@@ -6,9 +6,17 @@ not.
 
 ## Read this before adding anything here
 
-**Nothing in Agent Studio creates a business policy, and nothing here ever
-will.** Policies are created by the kit — `policies.py`, via `policy apply` —
-and by nothing else. Agent Studio can *read* policies (`Find Business Policies`)
+**Nothing here creates a business policy through the documented API, and
+nothing here ever will.** Policies are created by the kit — `policies.py`, via
+`policy apply`.
+
+One qualification, added 2026-08-28: `POST /api/v1/policy/` — the **internal**
+API behind the UI — takes an object and IS callable from an HTTP tool. A working
+agent exists on another instance using it. Two reasons it is not adopted here:
+it creates a blank policy and cannot set a description (and the description is
+the entire point, since CDM derives the standard from it), and `/api/v1/` is
+undocumented and unversioned, which is not a foundation for something deployed
+into customer instances. See CLAUDE.md for the full record. Agent Studio can *read* policies (`Find Business Policies`)
 and *delete* them (`Delete Business Policies`), because those endpoints take
 object bodies. `POST`/`PUT /integration/v1/business_policies/` take a bare
 array, and an HTTP tool's body can only ever be the tool-call arguments object.

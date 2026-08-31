@@ -575,6 +575,102 @@ def cmd_policy(args) -> int:
     return 1
 
 
+def cmd_cde(args) -> int:
+    """plan / apply / map / destroy over Critical Data Elements."""
+    from .cdes import CDEProvisioner
+
+    register = extract_json_text(Path(args.register).read_text(encoding="utf-8"))
+    if register is None or not register.get("cde_candidates"):
+        print(f"ERROR: {args.register} has no `cde_candidates` — this takes a CDE "
+              f"register (bcbs239_cde_dq_interpreter), not an obligation register.")
+        return 1
+
+    from .state import DeploymentState
+    s = Settings.from_env()
+    state = DeploymentState(args.state, instance=s.base_url)
+    prefix = args.prefix if args.prefix is not None else state.prefix
+    if args.prefix is not None:
+        state.set_prefix(args.prefix)
+    prov = CDEProvisioner(AlationClient(s), state, prefix=prefix)
+    standards = [x.strip() for x in (args.standards or []) if x.strip()]
+
+    # --only narrows the register in ONE place, before anything reads it, so
+    # plan/apply/map cannot disagree about what is in scope.
+    only = {r.strip() for r in (args.only or "").split(",") if r.strip()}
+    if only:
+        kept = [c for c in register["cde_candidates"] if c.get("ref") in only]
+        unknown = only - {c.get("ref") for c in register["cde_candidates"]}
+        if unknown:
+            print(f"ERROR: --only names {sorted(unknown)}, which are not in "
+                  f"{args.register}")
+            return 1
+        register = {**register, "cde_candidates": kept}
+        print(f"Scoped to {len(kept)} of {len(only)} requested candidate(s)\n")
+
+    if args.action == "plan":
+        actions = prov.plan(register)
+        for a in actions:
+            print(a)
+        creates = sum(1 for a in actions if a.verb == "create")
+        print(f"\n{creates} to create, "
+              f"{sum(1 for a in actions if a.verb == 'skip')} already present")
+        if standards:
+            print("\nStandards to attach (must be PUBLISHED — CDM ignores drafts, "
+                  "and a draft is not offered when attaching):")
+            for nm in standards:
+                std = prov.resolve_standard(nm)
+                print(f"  {'OK  ' if std else 'MISSING'} {prov.prefixed(nm)}"
+                      + (f"  status={std.get('status')} key={std.get('key')}"
+                         if std else "  — generate it in CDM first"))
+        else:
+            print("\nNo --standards given: CDEs would be created with no "
+                  "attestations, which is rarely what you want.")
+        if creates:
+            print("\nNothing has been created. Re-run with `cde apply`.")
+        return 0
+
+    if args.action == "apply":
+        try:
+            log = prov.apply(register, standards, status=args.status,
+                             steward_key=args.steward, dry_run=not args.yes)
+        except (RuntimeError, ValueError) as exc:
+            print(f"REFUSING TO APPLY\n\n  {exc}")
+            return 1
+        for line in log:
+            print(line)
+        if not args.yes:
+            print("\nDry run. Re-run with --yes to create.")
+        else:
+            print(f"\nState: {state.path} now records {len(state)} object(s)")
+            print("CDEs are created as drafts. Next: `cde map` to let CDM "
+                  "discover the physical columns.")
+        return 0
+
+    if args.action == "map":
+        sources = [x.strip() for x in (args.sources or []) if x.strip()]
+        if not sources:
+            print("ERROR: --source is required. An unscoped DATA_MAPPING crawls "
+                  "the entire catalog; scope it, e.g. --source alation://data/2")
+            return 1
+        for line in prov.discover_pdes(register, sources, dry_run=not args.yes):
+            print(line)
+        if not args.yes:
+            print("\nDry run. Re-run with --yes to trigger discovery.")
+        else:
+            print("\nPDEs land as `suggested`. A human accepts them in CDE "
+                  "Manager — the kit does not accept on anyone's behalf.")
+        return 0
+
+    if args.action == "destroy":
+        for line in prov.destroy(dry_run=not args.yes, only=only or None):
+            print(line)
+        if not args.yes:
+            print("\nDry run. Re-run with --yes to delete.")
+        return 0
+
+    return 1
+
+
 def cmd_userid(args) -> int:
     """Look up a numeric Alation user id via the bearer-authenticated User API.
 
@@ -1033,6 +1129,42 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--comment", default="",
                     help="Optional comment recorded with a status change")
     pp.set_defaults(func=cmd_policy)
+
+    pc = sub.add_parser("cde", help="Provision Critical Data Elements")
+    pc.add_argument("action", choices=["plan", "apply", "map", "destroy"])
+    pc.add_argument("--register", default="docs/runs/v0.6.0/run01.json",
+                    help="CDE register from bcbs239_cde_dq_interpreter. NOT the "
+                         "obligation register — CDE identity comes from "
+                         "cde_candidates, which obligations do not carry.")
+    # REPEATABLE, not comma-separated. Standards inherit their source policy's
+    # title and those contain commas — "Risk Data Accuracy, Reconciliation and
+    # Authoritative Sourcing" split into two names that matched nothing, and the
+    # run reported both as MISSING. A delimiter that occurs inside the values is
+    # not a delimiter.
+    pc.add_argument("--standard", action="append", default=[], dest="standards",
+                    metavar="NAME",
+                    help="UNPREFIXED standard name to attach. Repeat for several. "
+                         "Must already be PUBLISHED — CDM generates standards in "
+                         "the UI and applies only published versions.")
+    pc.add_argument("--source", action="append", default=[], dest="sources",
+                    metavar="KEY",
+                    help="For `cde map`: a source key to scope DATA_MAPPING, e.g. "
+                         "alation://data/2. Repeat for several. Required — an "
+                         "unscoped crawl searches the whole catalog.")
+    pc.add_argument("--only", default="",
+                    help="Comma-separated register refs to act on, e.g. "
+                         "'CDE-01,CDE-03'. Refs never contain commas. Without it "
+                         "every candidate in the register is in scope, and each "
+                         "live CDE costs 1 ACU/day.")
+    pc.add_argument("--status", default="DRAFT", choices=["DRAFT", "CANDIDATE"],
+                    help="Creation status. The API accepts nothing else; "
+                         "certification happens through the workflow.")
+    pc.add_argument("--steward", help="Steward source key, e.g. alation://user/1")
+    pc.add_argument("--prefix", default=None, help="Namespace prefix for created CDEs")
+    pc.add_argument("--state", default=".deployment-state.json")
+    pc.add_argument("--yes", action="store_true",
+                    help="Actually write. Without it, every action only reports.")
+    pc.set_defaults(func=cmd_cde)
 
     sub.add_parser("prompts").set_defaults(func=cmd_prompts)
     return p
