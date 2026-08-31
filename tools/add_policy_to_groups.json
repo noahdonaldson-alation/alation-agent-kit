@@ -1,0 +1,53 @@
+{
+  "$comment": [
+    "Step 4 of 4. Modelled directly on Jonathan Lanham's working tool on",
+    "hedgie-sme.mtse — this is the config that PROVED URL path templating works,",
+    "since {policy_id} in the url is filled from the declared input parameter.",
+    "",
+    "Policy groups have no create API. They are a declared PREREQUISITE, resolved",
+    "by exact title and never created. On finance-industry.mtse the BCBS 239",
+    "group is id 1, titled 'BCBS 239' WITH a space — 'BCBS239' is a different",
+    "group and will not match. Read the id from the UI or from",
+    "`GET /integration/v1/policy_group/` rather than assuming.",
+    "",
+    "group_ids is an ARRAY inside the arguments object, which is fine — the",
+    "constraint that blocks the documented bulk endpoint is that the BODY ITSELF",
+    "cannot be an array, not that arrays cannot appear within it."
+  ],
+
+  "name": "Add Policy to Policy Groups",
+  "function_name": "add_policy_to_groups",
+  "tool_type": "http",
+
+  "description": "Assign an existing business policy to one or more policy groups, by numeric group id. Call this after the policy has been created, titled and described. Policy groups cannot be created through the API — they must already exist, and the id must come from the catalog rather than being guessed.",
+
+  "http_config": {
+    "method": "POST",
+    "url": "${ALATION_BASE_URL}/api/v1/business_policy/{policy_id}/groups/",
+    "timeout_seconds": 30
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "required": ["policy_id", "group_ids"],
+    "properties": {
+      "policy_id": {
+        "type": "integer",
+        "description": "Numeric id of the policy to assign. Must be an id returned by Create Blank Policy in this conversation."
+      },
+      "group_ids": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "Numeric policy group ids, e.g. [1]. At least one. These are group IDs, not group names — if the user names a group, resolve it to an id first."
+      }
+    }
+  }
+}

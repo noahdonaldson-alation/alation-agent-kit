@@ -1,0 +1,42 @@
+{
+  "$comment": "tools[] are matched BY NAME at deploy time and mapped to tool_config_ids preserving order, so the four custom tools must be deployed first (tools/create_blank_policy.json, set_policy_title.json, set_policy_description.json, add_policy_to_groups.json). parameter_bindings is omitted rather than empty — the API rejects bindings without tool_config_ids. `$comment` is stripped before any write; ToolConfigCreate and the agent create model are both additionalProperties:false.",
+  "description": "Creates business policies in Alation's Policy Center from chat, with explicit human approval before any write. Per policy it creates an empty shell, sets the title, sets the description, and adds it to a policy group — completing each policy before starting the next. The description is the load-bearing part: Critical Data Manager derives a CDE overlay standard from a policy's description and nothing else, so a thin body produces a standard that governs nothing. Cannot read, delete, or ungroup policies, and cannot create policy groups.",
+  "input_json_schema": {
+    "properties": {
+      "message": {
+        "description": "What to create, in conversation. Typically a list of policy titles with HTML bodies (e.g. pasted from a generated policy spec), an obligation register to write bodies from, or a description of the policies wanted. Also needs a numeric owner id and, if grouping, a numeric policy group id.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "type": "object"
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "llm_extra_config": null,
+  "mode": "tool_call",
+  "name": "policy_creator",
+  "output_json_schema": null,
+  "prompt": "PLACEHOLDER — populated at deploy time from prompts/policy_creator.md via `./run.sh deploy agents/policy_creator.json --prompt policy_creator`. Do not edit this field by hand; the .md file is the source of truth.",
+  "published_status": "draft",
+  "skill_names": [],
+  "tags": [
+    "bcbs239",
+    "policy",
+    "governance",
+    "agent-kit"
+  ],
+  "tools": [
+    { "name": "Get Users" },
+    { "name": "Find Business Policies" },
+    { "name": "Create Blank Policy" },
+    { "name": "Set Policy Title" },
+    { "name": "Set Policy Description" },
+    { "name": "Add Policy to Policy Groups" }
+  ]
+}

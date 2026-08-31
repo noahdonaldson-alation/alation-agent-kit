@@ -1,0 +1,106 @@
+name: policy_creator
+purpose: >
+  Creates business policies in Policy Center from chat, with a human approving
+  before any write. Four HTTP tools per policy — create shell, set title, set
+  description, add to group — run to completion one policy at a time.
+
+  This is target-sequence step 4, and the first thing in this project that puts a
+  WRITE on the demo path in the UI rather than in a terminal.
+
+target_agent: policy_creator
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+  # Jonathan Lanham's equivalent agent runs Haiku 4.5, which is defensible for
+  # pure orchestration. Sonnet here because this agent may also WRITE the policy
+  # bodies, and the body is what CDM derives the standard from — the one place
+  # in this pipeline where prose quality has a measurable downstream effect.
+  # Revisit if it only ever provisions bodies handed to it.
+
+deploy_variables: {}
+
+output:
+  format: markdown
+  schema: null
+  # A results table with links, read by a human in chat. Not machine-consumed,
+  # so no JSON contract.
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  type: string
+  produced_by: >
+    A human, in chat. Typically pasted policy titles and HTML bodies from
+    policies/*.generated.json, or an obligation register, or a description of
+    what is wanted.
+
+agent_config:
+  mode: tool_call
+  tools:
+    - Get Users                     # resolve a person to a numeric owner_id
+    - Find Business Policies        # duplicate check before creating
+    - Create Blank Policy
+    - Set Policy Title
+    - Set Policy Description
+    - Add Policy to Policy Groups
+
+changelog:
+  - version: 0.1.0
+    date: 2026-08-31
+    note: >
+      New agent. Modelled on Jonathan Lanham's Policy Creation Agent on
+      hedgie-sme.mtse, rebuilt against our instance with two additions his does
+      not have: a description step, and a duplicate check.
+
+      WHY IT CAN EXIST AT ALL. Policy creation was recorded in CLAUDE.md as
+      impossible from an agent, proven by four executions. That finding was
+      about `/integration/v1/business_policies/`, which takes a BARE ARRAY body
+      that an HTTP tool cannot produce. It was never about policies. `/api/v1/`
+      takes objects, and URL path templating (`{policy_id}` filled from a
+      declared input parameter) works — confirmed from Jonathan's live tool, then
+      by execution here. The exception in the "agents, not scripts" directive is
+      therefore gone.
+
+      THE DESCRIPTION STEP IS THE POINT. Jonathan's agent sets titles only; his
+      own prompt says descriptions "have to be added in the Alation UI". That
+      would be useless here: CDM derives an overlay standard from the policy
+      DESCRIPTION and nothing else, measured 2026-08-31 — ~3.7k characters of
+      specific prose produced 9 derived requirements and ~38 attestation fields,
+      with the obligation register's `evidence` sentences converting almost
+      one-for-one into field names. Titled-but-empty policies generate empty
+      standards. So this prompt spends its longest section on what makes a
+      description derivable, not on the mechanics.
+
+      VERIFIED BEFORE WRITING THIS:
+        - `POST /api/v1/field/object/business_policy/{policy_id}/3/commit/` with
+          `{"op":"replace","value":...,"policy_id":10}` returned 201 and set the
+          title. So Agent Studio DOES duplicate the path-substituted parameter
+          into the body, and this endpoint ignores it. No tool change needed.
+        - field 3 and field 4 are independent: setting the title left the
+          description untouched.
+        - `op: "replace"` is idempotent, which is why the prompt offers
+          re-running a field as the recovery path for a wrong value.
+
+      SAFETY POSTURE, and the reason the prompt is mostly about failure: these
+      tools cannot delete. A policy created in error stays until someone removes
+      it in the UI. Hence the explicit approval gate, the duplicate check before
+      writing, stop-on-first-failure rather than continue-and-retry, and the
+      requirement that a `policy_id` may only come from a create response in the
+      same conversation. A hallucinated integer here writes into a customer's
+      Policy Center.
+
+      Ordering is deliberate: all four calls for one policy before starting the
+      next. Creating every shell first and titling in a second pass would leave,
+      on a mid-run failure, a set of indistinguishable blank policies rather than
+      a clean boundary between done and not-started.
+
+      UNVERIFIED: the agent has not been deployed or run. Nothing above about the
+      AGENT is a measurement; the tool-level facts are.
+
+      NEXT VERSION will likely fold in interpretation — read the regulation,
+      propose the obligations, write the bodies, then provision — which is
+      Aaron's "upload a policy like BCBS 239 to an agent and have it suggest what
+      policies to use... build those policies in the same chat session". Kept out
+      of v0.1.0 deliberately: prove the writes first, then add judgement on top.

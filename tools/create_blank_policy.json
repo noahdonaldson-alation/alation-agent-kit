@@ -1,0 +1,57 @@
+{
+  "$comment": [
+    "Step 1 of 4 in agent-driven policy creation. Modelled on a working tool on",
+    "hedgie-sme.mtse (Jonathan Lanham), rebuilt here against our own instance and",
+    "OAuth client.",
+    "",
+    "WHY THIS ENDPOINT AND NOT THE DOCUMENTED ONE: the documented bulk endpoint",
+    "POST /integration/v1/business_policies/ takes a BARE ARRAY, and an HTTP",
+    "tool's body is always the tool-call arguments object. Four executions, every",
+    "arrangement, all negative — see docs/policy-commands.md. This endpoint takes",
+    "an object, so it works.",
+    "",
+    "UNDOCUMENTED: /api/v1/ is the internal API behind the UI. It is usable and",
+    "verified working from an HTTP tool, but it is unversioned publicly and can",
+    "change without notice. Record the dependency; carry the product ask that",
+    "Alation should ship supported policy-creation tooling.",
+    "",
+    "The policy this creates is EMPTY — no title, no description. It is a shell",
+    "that steps 2 and 3 populate. An agent that creates without titling leaves an",
+    "untitled orphan someone has to find and clean up by hand, so the prompt",
+    "requires the pair to complete together.",
+    "",
+    "owner_id is a NUMERIC Alation user id, not an email. Resolve it with the",
+    "Get Users base tool, or `agentkit userid <email>`. Never guess it."
+  ],
+
+  "name": "Create Blank Policy",
+  "function_name": "create_blank_policy",
+  "tool_type": "http",
+
+  "description": "Create a single new, empty business policy in Alation owned by the given user, and return its numeric id and url. The policy is created with NO title and NO description — it is an empty shell that must be populated by Set Policy Title and Set Policy Description before it is usable. Call once per policy. There is no undo through these tools, so only call it for a policy the user has explicitly approved.",
+
+  "http_config": {
+    "method": "POST",
+    "url": "${ALATION_BASE_URL}/api/v1/policy/",
+    "timeout_seconds": 30
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "required": ["owner_id"],
+    "properties": {
+      "owner_id": {
+        "type": "integer",
+        "description": "Numeric Alation user id that will own the policy, e.g. 1. This is the user id, not an email address or username. If the user gives a name or email, resolve it first — never guess."
+      }
+    }
+  }
+}

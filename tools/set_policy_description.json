@@ -1,0 +1,63 @@
+{
+  "$comment": [
+    "Step 3 of 4, and the one that carries the value. Same endpoint as",
+    "set_policy_title.json with field_id 4 instead of 3.",
+    "",
+    "THIS IS THE LOAD-BEARING CALL. Alation's Critical Data Manager derives an",
+    "overlay standard's requirements from the policy DESCRIPTION and nothing",
+    "else. Measured 2026-08-31: ~3.7k characters of specific prose produced 9",
+    "derived requirements and ~38 attestation fields, with the register's",
+    "`evidence` sentences converting almost one-for-one into field names. A",
+    "titled policy with an empty description generates an EMPTY standard, so a",
+    "run that creates and titles but fails to describe has produced nothing",
+    "useful — it has produced something that looks finished and governs nothing.",
+    "",
+    "VALUE IS HTML. The UI sends a <div> wrapping <p> blocks, with entities for",
+    "non-ASCII (&mdash;, &para;, &quot;, &#39;). Verbatim quotations belong in",
+    "their own <p><em>&para;NN:</em> \"...\"</p> block — that is the shape",
+    "policy_body_author and authoring.build_description already produce.",
+    "",
+    "String values have a documented size limit of 1023 KB, so length is not a",
+    "practical constraint here."
+  ],
+
+  "name": "Set Policy Description",
+  "function_name": "set_policy_description",
+  "tool_type": "http",
+
+  "description": "Set the description (body) on an existing business policy. Takes the numeric policy id returned by Create Blank Policy. The value is HTML. This is the most important call in policy creation: Alation's Critical Data Manager reads the policy description, and only the description, when generating the CDE overlay standard from it — so a vague or empty description produces a standard that governs nothing.",
+
+  "http_config": {
+    "method": "POST",
+    "url": "${ALATION_BASE_URL}/api/v1/field/object/business_policy/{policy_id}/4/commit/",
+    "timeout_seconds": 30
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "required": ["policy_id", "op", "value"],
+    "properties": {
+      "policy_id": {
+        "type": "integer",
+        "description": "Numeric id of the policy to describe. Must be an id returned by Create Blank Policy in this conversation."
+      },
+      "op": {
+        "type": "string",
+        "enum": ["replace"],
+        "description": "Always the string \"replace\"."
+      },
+      "value": {
+        "type": "string",
+        "description": "The policy body as HTML, e.g. \"<div><p><strong>Principle 3 &mdash; Accuracy.</strong> The bank shall ...</p><p><em>&para;36:</em> \\\"verbatim quotation\\\"</p></div>\". Use HTML entities rather than raw non-ASCII characters. State what the bank SHALL do, name the quality dimensions, and say what evidence a steward must be able to produce — that specificity is what the standard is generated from."
+      }
+    }
+  }
+}

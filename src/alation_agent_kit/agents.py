@@ -35,6 +35,13 @@ _CREATE_FIELDS = {
 }
 
 
+# Fields the tool CREATE body carries that the tool UPDATE body forbids. Both
+# are immutable on an existing tool, so `PUT /config/tool/{id}` 422s on them with
+# `extra_forbidden`. Verified by execution 2026-08-31 on four tools.
+_TOOL_UPDATE_STRIP = {"tool_type"}
+_TOOL_UPDATE_STRIP_AUTH = {"auth_type"}
+
+
 def _expand_env(obj: Any) -> Any:
     """Substitute ${VAR} from the environment, recursively.
 
@@ -155,7 +162,28 @@ class AgentStudio:
             return {"dry_run": True, "name": name}
 
         if existing:
-            updated = self.c.put(f"{TOOL_PATH}/{existing}", json_body=body)
+            # CREATE SHAPE != UPDATE SHAPE, verified by execution 2026-08-31.
+            # `PUT /config/tool/{id}` rejects `tool_type` and
+            # `auth_config.auth_type`:
+            #   422 extra_forbidden loc:["body","tool_type"]
+            #   422 extra_forbidden loc:["body","auth_config","auth_type"]
+            # Both are immutable properties of an existing tool — you cannot turn
+            # an http tool into something else, or switch its auth scheme — so
+            # the update model does not accept them at all. Sending the create
+            # body verbatim made every redeploy of an existing tool fail while
+            # first-time creates succeeded, which is a failure mode that only
+            # shows up on the SECOND run.
+            #
+            # Same class as the agent trap: an export/create body is not a valid
+            # update body on this API. If a further field turns out to be
+            # forbidden here, add it to _TOOL_UPDATE_STRIP rather than
+            # hand-editing at the call site.
+            update = {k: v for k, v in body.items() if k not in _TOOL_UPDATE_STRIP}
+            auth = {k: v for k, v in (update.get("auth_config") or {}).items()
+                    if k not in _TOOL_UPDATE_STRIP_AUTH}
+            if auth:
+                update["auth_config"] = auth
+            updated = self.c.put(f"{TOOL_PATH}/{existing}", json_body=update)
             print(f"Updated tool {name!r} (id={existing})")
             return updated
         created = self.c.post(TOOL_PATH, json_body=body)
