@@ -59,6 +59,82 @@ agent_config:
     # Discover CDE Columns was REMOVED in v0.2.0 — see the changelog.
 
 changelog:
+  - version: 0.3.1
+    date: 2026-09-03
+    note: >
+      Placeholder-name guard. A standard whose current version is called `Test 3`,
+      `Untitled`, `Copy of…` or similar — or whose name bears no relation to its
+      source policy — is now flagged and the agent STOPS and asks.
+
+      IT ASKS RATHER THAN SKIPS, deliberately. Noah's instinct was a rule to
+      ignore anything with TEST in the name. Right in general, but on this
+      instance it would disable the feature it was protecting: `Test 1`..`Test 6`
+      ARE the current published versions of six of the seven BCBS 239 standards,
+      so a skip rule leaves the agent with one standard and no multi-standard
+      build. And a silent skip is the worse failure mode anyway — a dropped
+      standard means elements quietly under-covered with no one the wiser, where
+      an ugly name is at least visible. Both choices belong to the human.
+
+      Also: when told to proceed, the agent must refer to such a standard by its
+      SOURCE POLICY thereafter, so a proposal never claims an element is governed
+      by "Test 3".
+
+      Correction carried over from the same conversation: CDEs are not as
+      disposable as earlier notes here implied. Drafts delete freely (done
+      repeatedly on 2026-09-03), but a CERTIFIED CDE is version-only, the same
+      one-way door as a published standard — confirmed by Noah against a second
+      tenant. Reasoning that leans on "we can always recreate the CDEs" only
+      holds while they are drafts.
+
+  - version: 0.3.0
+    date: 2026-09-03
+    note: >
+      MULTI-STANDARD. The agent now reads every standard governing the regulation
+      at once and attaches all applicable ones per element, instead of working
+      from a single standard.
+
+      THIS IS FORCED, NOT PREFERRED. `fields` can only be set at create time and
+      there is no agent-reachable way to attach a standard afterwards. A single
+      element usually evidences several principles — an exposure amount is
+      governed by accuracy AND completeness AND timeliness — so building from one
+      standard permanently precludes the others. Processing standards
+      sequentially cannot work across a full regulation. Noah's call, and the
+      constraint makes it the only correct one.
+
+      It is also the better demo: one element visibly governed by several
+      principles is the Governed pillar in a single screen.
+
+      MATCHING MOVED FROM NAME TO SOURCE POLICY. Each standard carries
+      `sources[]` with `alation://business_policy/<id>`, which is stable; its own
+      name is not, because renaming creates a new version. On this instance six
+      of the seven BCBS 239 standards have a version 2 named `Test 1`..`Test 6`,
+      so a name match finds the superseded v1 or nothing at all. Grouping by
+      source policy routes around that entirely — which is why the Test standards
+      are NOT being renamed. Noah's call, and it is right: the rename would not
+      remove the old versions anyway, and matching on something stable is
+      correct regardless of what those versions happen to be called. Residual
+      cost is cosmetic and stated in the prompt: `Test 4` will display on any CDE
+      that attaches it, and the agent is told to flag when a version's name looks
+      unrelated to its source policy.
+
+      Version selection: among rows sharing a `key`, take the highest `version`
+      with status PUBLISHED. Drafts are not applied by CDM, so an unpublished
+      standard is left out with a note rather than attached.
+
+      VERIFIED THIS VERSION: `Fetch CDE Overlay Standard Detail` works. A run
+      against standard 641 read all four derived requirements by name and then
+      correctly refused to make CDEs out of Reconciliation Frequency, Approved
+      Accuracy Threshold, Business Data Owner, Measurement Frequency, Dictionary
+      Entry Exists and Responsible Reviewer — it could see they were attestation
+      fields inside the standard. So "the agent reads what CDM derived" is now
+      mechanism rather than narration, and the v0.2.1 governance-metadata guard
+      has something concrete to act on.
+
+      UNVERIFIED: no multi-standard run has been executed, and nothing has yet
+      confirmed whether attaching by `key` follows the standard's current version
+      or pins whichever version was current at attach time. If it pins, a later
+      standard revision will not reach existing CDEs.
+
   - version: 0.2.2
     date: 2026-09-03
     note: >

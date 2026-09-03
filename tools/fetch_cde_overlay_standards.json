@@ -68,6 +68,28 @@
       "limit": {
         "type": "integer",
         "description": "Maximum standards to return. Default 50."
+      },
+      "latest_published_only": {
+        "type": "boolean",
+        "description": "Return only the current published version of each standard. SET THIS TRUE unless you have a reason not to. Standards are versioned and the unfiltered list returns every version of every standard, including superseded ones that may carry different names — leaving version selection to be done by hand and got wrong. This filter is the server doing it correctly."
+      },
+      "latest_only": {
+        "type": "boolean",
+        "description": "Return only the latest version of each standard regardless of status. Use latest_published_only instead when you intend to attach a standard to a CDE — CDM applies only published versions, so an unpublished latest version is not governing anything."
+      },
+      "type": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Filter by standard type, e.g. [\"OVERLAY\"]. The instance also carries built-in BASELINE, RISK, CURATION, CC_BASELINE and STANDARDS_APPROVERS standards which are attached to CDEs automatically and are not yours to reason about."
+      },
+      "status": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Filter by status: DRAFT, PENDING_APPROVAL, PUBLISHED, IN_REVIEW. Those four are the whole enum."
+      },
+      "search": {
+        "type": "string",
+        "description": "Free-text search on name and description. Use with care: a standard's name is NOT stable — renaming creates a new version, so the current version of a standard may carry a name unrelated to what it governs. Prefer identifying a standard by its source policy in sources[]."
       }
     }
   }

@@ -397,6 +397,47 @@ def cmd_policy(args) -> int:
             print("\nDry run. Re-run with --yes to change status.")
         return 0 if ok else 1
 
+    if args.action == "relink":
+        if not args.id or args.source_policy is None:
+            print("ERROR: relink needs one --id and one --source-policy")
+            return 2
+        if len(args.id) != 1:
+            print("ERROR: relink takes a single --id — the standard-to-policy "
+                  "mapping is a judgement call and must be made one at a time.")
+            return 2
+        log, ok = prov.relink_standard(args.id[0], args.source_policy,
+                                       comment=args.comment, dry_run=not args.yes)
+        for line in log:
+            print(line)
+        if not args.yes:
+            print("\nDry run. Re-run with --yes to publish a re-pointed version.")
+            print("Relinking changes the LABEL, not the DERIVATION: the "
+                  "requirements were generated from the PREVIOUS policy's prose "
+                  "and are carried forward unchanged. Fine for repairing a dev "
+                  "instance; do not use it to manufacture traceability a customer "
+                  "will rely on — regenerate from the live policy instead.")
+        return 0 if ok else 1
+
+    if args.action == "rename":
+        if not args.id:
+            print("ERROR: give at least one --id")
+            return 2
+        ok_all = True
+        for sid in args.id:
+            log, ok = prov.rename_standard(
+                sid, new_name=args.name,
+                from_source_policy=args.from_source_policy,
+                comment=args.comment, dry_run=not args.yes)
+            for line in log:
+                print(line)
+            ok_all = ok_all and ok
+        if not args.yes:
+            print("\nDry run. Re-run with --yes to create and publish new versions.")
+            print("Renaming is NOT reversible: it publishes a new version, and a "
+                  "published version can never be deleted. The old name stays in "
+                  "the version selector.")
+        return 0 if ok_all else 1
+
     if args.action == "author":
         from .authoring import audit, finalize
         from .invoke import run_agent_stream
@@ -1101,7 +1142,8 @@ def build_parser() -> argparse.ArgumentParser:
     pp = sub.add_parser("policy", help="Provision policy groups, policies, standards")
     pp.add_argument("action",
                 choices=["plan", "apply", "verify", "standards", "author",
-                         "assemble", "review", "assess", "publish", "destroy"])
+                         "assemble", "review", "assess", "publish", "rename",
+                         "relink", "destroy"])
     pp.add_argument("spec", nargs="?", default="policies/bcbs239.json")
     pp.add_argument("--prefix", default=None,
                     help="Namespace prefix for created objects, e.g. 'BCBS239 - '. "
@@ -1141,6 +1183,27 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Target status for `policy publish`")
     pp.add_argument("--comment", default="",
                     help="Optional comment recorded with a status change")
+    pp.add_argument("--id", type=int, action="append",
+                    help="For `policy rename`: the integer id of the standard "
+                         "version to rename. Repeat for several. Take it from "
+                         "`policy standards` — it is the id of the CURRENT "
+                         "version, not the original.")
+    pp.add_argument("--name",
+                    help="For `policy rename`: the new name. Mutually exclusive "
+                         "with --from-source-policy, and only sensible with a "
+                         "single --id.")
+    pp.add_argument("--source-policy", type=int,
+                    help="For `policy relink`: the integer id of the LIVE "
+                         "business policy to re-point this standard at. The "
+                         "policy is read back and the command refuses if it does "
+                         "not exist. Changes the label only — the requirements "
+                         "were derived from the previous policy's prose and are "
+                         "carried forward unchanged.")
+    pp.add_argument("--from-source-policy", action="store_true",
+                    help="For `policy rename`: take the new name from the "
+                         "standard's own sources[0].name — the business policy "
+                         "CDM derived it from. Right by construction, and the "
+                         "only sane option when renaming several at once.")
     pp.set_defaults(func=cmd_policy)
 
     pc = sub.add_parser("cde", help="Provision Critical Data Elements")
