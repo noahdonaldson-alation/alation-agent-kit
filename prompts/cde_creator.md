@@ -103,9 +103,23 @@ thing it is. "Counterparty Identifier", not "Counterparty".
 naming the warehouse vocabulary as well as the business vocabulary.</p>
 <p><strong>Why It Matters:</strong> the mechanism by which a risk figure goes
 wrong without it. Be concrete — which aggregate breaks, and how.</p>
-<p><strong>Governing Standards:</strong> the principles and paragraphs this
-element derives from.</p>
+<p><strong>Governing Standards:</strong> the standards this element evidences,
+each named in full, and the requirement within it.</p>
 ```
+
+**Never write a paragraph reference you have not read.** `¶` followed by a number
+is a citation to the regulation, and a wrong one is worse than none — it looks
+authoritative and a knowledgeable reader will check it.
+
+**Standard ids are not paragraph numbers.** 641, 656, 658 are database ids we
+gave you. Rendering them as `¶641` invents a citation to a paragraph that does
+not exist. BCBS 239's paragraphs are two-digit numbers; a three-digit `¶` in your
+output is always this mistake.
+
+Cite a paragraph only when the number appears in the standard's requirement text
+or the policy body you were given. Otherwise name the standard and the
+requirement — *"BCBS239 - Risk Data Timeliness, Availability SLA"* — which is
+precise, checkable, and needs no paragraph at all.
 
 Naming the physical spellings in the definition — `SRC_SYS_ID`, `SOR_ID`,
 `EXPOSURE_AMT` — is worth doing. A steward reading it can tell immediately
@@ -255,9 +269,17 @@ standards both need the exposure amount, that is one element carrying two
 standards, not two elements. Merging after the fact is impossible, so merge
 before you propose.
 
-**Do not state how many elements you are proposing.** Number the list and let it
-speak for itself — a stated total is one more thing that can disagree with the
-list, and it adds nothing a reader cannot see.
+**Never state how many elements there are — not here, not while creating them,
+not in the summary at the end.** Number the list and let it speak for itself.
+
+This is not a style preference. Counting your own output is the one thing that
+reliably goes wrong in this pipeline, and it has gone wrong every time it has
+been asked for. A stated total is the only thing that can contradict the list
+beside it, and it tells a reader nothing the list does not already show. "Ten
+elements to create" above nine elements is worse than no number at all, because
+it makes a careful reader doubt the nine.
+
+Say "the elements below" or "each element in turn". Not a figure.
 
 A qualified reply is not approval. If they say "yes but drop the fourth", apply
 the change and re-confirm the whole list.

@@ -59,6 +59,63 @@ agent_config:
     # Discover CDE Columns was REMOVED in v0.2.0 — see the changelog.
 
 changelog:
+  - version: 0.3.3
+    date: 2026-09-03
+    note: >
+      The no-count rule now applies everywhere, not just to the proposal. The
+      v0.3.2 run opened with "Ten elements to create" and created nine — the
+      SEVENTH confirmed instance of a model in this pipeline failing to total its
+      own output, and the second in this agent. v0.2.1 had scoped the rule to
+      step 5; the miscount simply moved to the creation commentary.
+
+      Consistent with the standing finding: per-row work is flawless, summing
+      across rows is not, and instruction does not fix it. So the fix is removing
+      the question wherever it can be asked, rather than asking more firmly.
+
+      VERIFIED IN THE SAME RUN: the citation fix works. Governing Standards now
+      reads "BCBS239 - Risk Data Accuracy, Reconciliation and Authoritative
+      Sourcing — Authoritative Source Designation and Risk Data Reconciliation to
+      Accounting", naming standards and requirements with no fabricated paragraph
+      numbers. Merge held (four standards on Position As-of Date), and the
+      descriptions improved independently — distinguishing the VARCHAR staging
+      form from the typed DATE, and naming the three obligations that break at
+      once.
+
+      Also of note, unprompted: the run reported that no RWA_AMT or
+      risk-weighted-asset column exists in the data source, and said where that
+      gap should be recorded if RWA lives elsewhere. Gap findings continue to
+      arrive as a by-product of doing the work rather than from asking for them.
+
+  - version: 0.3.2
+    date: 2026-09-03
+    note: >
+      FABRICATED PARAGRAPH CITATIONS — caught in the UI on the first
+      multi-standard run and fixed at the prompt.
+
+      The `Position As-of Date` CDE's description read "BCBS 239 Principle 3
+      (¶641) ... Principle 4 (¶658) ... Principle 5 (¶656) ... Principle 6
+      (¶657 ¶50)". 641, 656, 657 and 658 are the STANDARD IDS we passed in. The
+      agent rendered them in ¶ notation, citing paragraphs that do not exist —
+      BCBS 239's paragraphs are two-digit. Only ¶50 was real.
+
+      This is the same failure family as the one that drove the citation-pointer
+      design in `policy_body_author`: a model asked to produce references
+      produces plausible ones. There the fix was structural — the agent emits a
+      pointer and code substitutes the exact text, so a quote cannot be
+      untraceable by construction. Here there is no code step to substitute
+      into, so the fix is a prohibition plus a removal of the need: name the
+      standard and the requirement instead of a paragraph. "BCBS239 - Risk Data
+      Timeliness, Availability SLA" is precise and checkable and needs no ¶.
+
+      The tell is worth remembering: a three-digit number after ¶ in this
+      pipeline is always a database id wearing a citation's clothes.
+
+      VERIFIED IN THE SAME RUN, and it is the thing this version existed for:
+      merge works. `Position As-of Date` carries four BCBS 239 standards plus
+      Baseline Metadata and Risk Assessment Framework, with three AS_OF_DATE
+      columns across bronze, silver and gold, each showing its source path. One
+      column, four principles, in one screen.
+
   - version: 0.3.1
     date: 2026-09-03
     note: >
