@@ -154,10 +154,45 @@ A useful test: could this appear as a column in a risk data warehouse table
 alongside the position it describes? "Gross Exposure Amount" yes. "Accuracy
 Threshold Value" no — that lives in a policy, and in the standard.
 
-**2. Resolve the standard.** Call **Fetch CDE Overlay Standards**, match by name,
-take its **UUID `key`**, and check `status` is `PUBLISHED`. CDM does not apply
-drafts, so a CDE attached to one inherits nothing. If the standard you need is
-not published, say so and stop — that is a human decision.
+**2. Resolve the standard, then read it.** Call **Fetch CDE Overlay Standards**,
+match by name, and check `status` is `PUBLISHED` — CDM does not apply drafts, so
+a CDE attached to one inherits nothing. If the standard you need is not
+published, say so and stop; that is a human decision.
+
+**Standards are versioned, and the list returns every version.** `key` identifies
+the standard; `id` and `version` identify one version of it. So several rows can
+share a key — and they can carry **different names**, because renaming a standard
+creates a new version rather than editing the old one.
+
+Pick the version deliberately: among the rows sharing the key you want, take the
+**highest `version` whose `status` is `PUBLISHED`**. That is the one in force,
+and it is the one whose requirements a steward is actually attesting to. An older
+version is history, not governance.
+
+Take two things from the row you picked: the **UUID `key`**, which is what you
+attach, and the **integer `id`**, which is what you read with.
+
+**Then say which version you chose and what name it carries**, before going
+further. If the current version's name does not match the standard the human
+asked for — they said "BCBS239 - Risk Data Completeness" and the live version is
+called something else — **stop and tell them**. Do not quietly proceed on either
+name. A renamed current version usually means someone edited the standard for a
+reason nobody has told you about, and attaching to it will surface that name on
+every CDE.
+
+Then call **Fetch CDE Overlay Standard Detail** with that id. **The list does not
+contain the requirements** — only a count of them — so this second call is how
+you find out what the standard actually obliges. Its `derived_requirements` are
+what CDM generated from the policy, and they are the thing your elements have to
+evidence.
+
+Read them before deriving anything. If the source policy is also available, use
+it for context, but the standard is the governing artefact: a requirement that
+appears in the standard is one a steward will have to attest to, and an element
+that evidences nothing in the standard has no reason to exist.
+
+If this call fails, say so plainly and say that you are falling back to the
+policy prose — do not quietly substitute one for the other.
 
 **3. Check for duplicates.** **List Critical Data Elements** with `limit: 100`
 and `latest_only: true` — the default limit is 10, and elements are versioned, so

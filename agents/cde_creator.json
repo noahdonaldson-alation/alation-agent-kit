@@ -36,6 +36,7 @@
     { "name": "Get Object Fields" },
     { "name": "List Critical Data Elements" },
     { "name": "Fetch CDE Overlay Standards" },
+    { "name": "Fetch CDE Overlay Standard Detail" },
     { "name": "Create Critical Data Element" }
   ]
 }

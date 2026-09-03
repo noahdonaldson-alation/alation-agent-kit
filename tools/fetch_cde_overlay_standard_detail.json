@@ -1,0 +1,55 @@
+{
+  "$comment": [
+    "NEW 2026-09-03. Exists because `Fetch CDE Overlay Standards` is a LIST and a",
+    "list is a summary: every item carries id, name, key, type, version, status,",
+    "derived_standards_count, owners, sources and timestamps — the COUNT of",
+    "requirements but not one word of their content. Verified by running",
+    "`agentkit policy standards` and reading all 19 items.",
+    "",
+    "That gap had a visible cost. Across three cde_creator runs the agent tried to",
+    "read the standard's requirements, failed, and fell back to the source policy's",
+    "prose — which works, but means element selection traces around CDM's",
+    "derivation rather than through it. The demo's claim is that CDM derives the",
+    "standard and the agent reads what CDM derived; without this tool that claim is",
+    "narration, not mechanism.",
+    "",
+    "The id is the INTEGER id from the list, not the UUID key. Note that `key` is",
+    "NOT unique across versions — it identifies the standard, `id` identifies the",
+    "version — so a detail read must use the id of the version you mean.",
+    "",
+    "UNVERIFIED: this path is the documented get-one sibling of the list and create",
+    "endpoints, but it has not been called. Test it through `Test tool` — it",
+    "declares one scalar, so unlike Create Critical Data Element it can be."
+  ],
+
+  "name": "Fetch CDE Overlay Standard Detail",
+  "function_name": "fetch_cde_overlay_standard_detail",
+  "tool_type": "http",
+
+  "description": "Read one CDE overlay standard in full, including its derived_requirements — the requirements CDM generated from the source policy, each with its attestation fields, types and allowed values. Use this after Fetch CDE Overlay Standards has told you which standard you want: the list returns only a count of requirements, never their content. Takes the standard's INTEGER id, not its UUID key. This is what tells you what a standard actually obliges, and therefore which data elements are needed to evidence it.",
+
+  "http_config": {
+    "method": "GET",
+    "url": "${ALATION_BASE_URL}/cde-service/integration/standard/{standard_id}/",
+    "timeout_seconds": 60
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "required": ["standard_id"],
+    "properties": {
+      "standard_id": {
+        "type": "integer",
+        "description": "The standard's integer id, as returned by Fetch CDE Overlay Standards. NOT the UUID key — the key is shared across versions of the same standard, the id is not."
+      }
+    }
+  }
+}
