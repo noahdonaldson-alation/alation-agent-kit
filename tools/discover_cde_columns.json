@@ -1,0 +1,79 @@
+{
+  "$comment": [
+    "Triggers CDM's own physical-column discovery for one CDE. Async — returns a",
+    "job_id; the agent reports it and the columns appear in CDE Manager as",
+    "`suggested` for a human to accept.",
+    "",
+    "KEYWORDS ARE DELIBERATELY NOT DECLARED. `payload.keywords` exists on this",
+    "endpoint and supplying it REPLACES the synonyms CDM generated from the CDE's",
+    "description. Evidence that CDM's are better: on the GL reconciliation key,",
+    "our register's business vocabulary (GL reference, journal entry ID, trade ID)",
+    "found nothing, while CDM's generated set contained `recon key`, `GL key` and",
+    "`GL reconciliation key` — the forms that actually match GL_RECON_KEY. Leaving",
+    "keywords out is what makes the demo claim true: write a good definition, and",
+    "Alation finds the columns.",
+    "",
+    "only_sources IS declared and should almost always be set. An unscoped",
+    "DATA_MAPPING crawls the entire catalog; on a customer instance that is both",
+    "slow and noisy. Format is alation://data/<id>.",
+    "",
+    "409 'another action is in progress' — actions serialise per CDE. An agent",
+    "doing several CDEs must let one finish before triggering the next.",
+    "",
+    "CDEAction has exactly three values. CALCULATE_CURATION_SCORE and",
+    "CALCULATE_DQ_SCORE populate the Curation Completeness and Data Quality tiles,",
+    "which read N/A until they are run — DQ stays N/A until monitors exist."
+  ],
+
+  "name": "Discover CDE Columns",
+  "function_name": "discover_cde_columns",
+  "tool_type": "http",
+
+  "description": "Ask Alation to find the physical columns for a Critical Data Element, using the search synonyms it generated from that element's description. Runs asynchronously and returns a job id; the matches appear in CDE Manager marked 'suggested' for a human to accept — nothing is linked automatically. Scope it to a data source. Also used to calculate the curation and data-quality scores, which read N/A until run. Only one action can run on a CDE at a time.",
+
+  "http_config": {
+    "method": "POST",
+    "url": "${ALATION_BASE_URL}/cde-service/integration/cde/{cde_id}/trigger_action/",
+    "timeout_seconds": 60
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "required": ["cde_id", "action"],
+    "properties": {
+      "cde_id": {
+        "type": "integer",
+        "description": "Numeric id of the CDE, as returned by Create Critical Data Element in this conversation."
+      },
+      "action": {
+        "type": "string",
+        "enum": ["DATA_MAPPING", "CALCULATE_CURATION_SCORE", "CALCULATE_DQ_SCORE"],
+        "description": "DATA_MAPPING finds physical columns. CALCULATE_CURATION_SCORE fills the Curation Completeness tile. CALCULATE_DQ_SCORE fills the Data Quality tile, and stays N/A until DQ monitors exist."
+      },
+      "payload": {
+        "type": "object",
+        "description": "Optional. For DATA_MAPPING, scope the crawl to specific data sources — leaving it unscoped searches the whole catalog.",
+        "properties": {
+          "only_sources": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Data source keys to search, e.g. [\"alation://data/2\"]."
+          },
+          "exclude_sources": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Data source keys to skip."
+          }
+        }
+      }
+    }
+  }
+}

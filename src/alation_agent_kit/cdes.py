@@ -502,6 +502,37 @@ class CDEProvisioner:
                 log.append(f"  ! {rec['name']}: {str(err)[:160]}")
         return log
 
+    def score(self, register: dict, actions: list[str],
+              dry_run: bool = True) -> list[str]:
+        """Populate the Curation Completeness and Data Quality tiles.
+
+        Both read `N/A` until their score has been calculated — they are not
+        computed on write. `CALCULATE_CURATION_SCORE` is the one worth running:
+        it measures how completely a CDE is curated and is the first tile a
+        viewer sees in CDE Manager. `CALCULATE_DQ_SCORE` will stay N/A until DQ
+        monitors exist, so running it is harmless but currently pointless.
+
+        Same 409 serialisation as DATA_MAPPING — one action at a time per CDE.
+        """
+        log: list[str] = []
+        by_ref = {c.get("ref"): c for c in register.get("cde_candidates") or []}
+        for rec in self.state.of_kind("cde"):
+            if rec.get("ref") not in by_ref:
+                continue
+            for action in actions:
+                if dry_run:
+                    log.append(f"  ~ would trigger {action} on {rec['name']}")
+                    continue
+                try:
+                    job = self.trigger(rec["id"], action)
+                    log.append(f"  ~ {rec['name']}: {action} job {job}")
+                    if job:
+                        final = self.await_job(job)
+                        log.append(f"      job {job} -> {final.get('status')}")
+                except (AlationError, RuntimeError) as err:
+                    log.append(f"  ! {rec['name']} {action}: {str(err)[:160]}")
+        return log
+
     # -- destroy ------------------------------------------------------------
     def destroy(self, dry_run: bool = True,
                 only: set[str] | None = None) -> list[str]:

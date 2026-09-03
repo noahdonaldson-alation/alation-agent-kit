@@ -1,0 +1,246 @@
+name: cde_creator
+purpose: >
+  Drafts Critical Data Elements in CDM from chat, with a human approving before
+  any write. Per element: create with its published overlay standard attached,
+  then trigger Alation's own physical-column discovery.
+
+  This is demo-script scene 5, and the second write on the demo path in the UI
+  (after policy_creator). It is also where the Governed pillar becomes visible:
+  a policy derives a standard, the standard attaches to an element, and Alation
+  finds that element's columns in the warehouse without anyone asserting a link.
+
+target_agent: cde_creator
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+  # Sonnet, for the same reason as policy_creator: the agent WRITES the CDE
+  # description, and the description is what Alation generates search synonyms
+  # from. Prose quality has a measured downstream effect on how many physical
+  # columns are discovered, so this is not pure orchestration.
+
+deploy_variables: {}
+
+output:
+  format: markdown
+  schema: null
+  # A results table read by a human in chat — name, id, risk level, job id.
+  # Not machine-consumed.
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  type: string
+  produced_by: >
+    A human, in chat. Typically the policies and published standards created
+    earlier in the demo, plus the data source key to scope discovery to.
+
+agent_config:
+  mode: tool_call
+  tools:
+    # Alation BASE tools. Search Catalog with object_types ["column"] is how the
+    # agent finds physical columns — it returns business title, physical name,
+    # type, containing table AND the numeric object id (verified 2026-09-03:
+    # POST_DT came back as column id 4406). Get Object Fields resolves an
+    # ambiguous hit. Note the naming seam: search calls these `column`, while a
+    # PDE source_key says `alation://attribute/<id>` — same object.
+    - Search Catalog
+    - Get Object Fields
+    # Alation BASE tool, not ours — richer than the one I started to write, and
+    # it meters at 0.25 ACU per call where a custom tool would not. Two defaults
+    # in it are traps the prompt has to work around: `limit` defaults to 10, and
+    # CDEs are versioned so `latest_only` must be set or one element returns as
+    # several. It also offers `search` (free text over name AND description),
+    # which is a better duplicate check than listing and string-matching.
+    - List Critical Data Elements    # duplicate check before creating
+    - Fetch CDE Overlay Standards    # resolve a standard name to its UUID key
+    - Create Critical Data Element   # standard + columns attached in one call
+    # Discover CDE Columns was REMOVED in v0.2.0 — see the changelog.
+
+changelog:
+  - version: 0.2.2
+    date: 2026-09-03
+    note: >
+      `path` added to the PDE shape and proven. It is what CDE Manager renders in
+      its `Source path` column — omit it and every row reads N/A; send it and you
+      get "MCF Snowflake > mcf_risk_silver > exposure_clean". The `type`
+      vocabulary data/schema/table was inferred from the breadcrumb's shape (the
+      spec's only example value is `data`) and confirmed by a live create.
+
+      This matters more than it looks. Four SOURCE_SYSTEM_CD columns from four
+      tables are four indistinguishable rows without it, and the steward review
+      the whole design rests on becomes guesswork.
+
+      VALIDATED END TO END on six CDEs (19569-19574), 22 columns, one create call
+      each carrying standard + columns + paths.
+
+      Also worth recording: the run that produced them read the POLICY prose, not
+      the standard's derived_requirements — it tried, concluded the tool was not
+      returning them, and fell back. That works, but it is one step up the chain
+      from the demo's claim that the agent reads what CDM derived. Open item
+      against `Fetch CDE Overlay Standards`.
+
+  - version: 0.2.1
+    date: 2026-09-03
+    note: >
+      Three fixes, all from one bad run that produced a plausible-looking
+      proposal with nothing behind it.
+
+      IT SKIPPED THE SEARCH. The run proposed seven elements with "Physical
+      analogue: RDE_ID, ELEMENT_ID, SRC_ELEMENT_ID" — guessed names, no ids, no
+      tables, no tool calls. Step 4 existed but was one line in a long list, and
+      the model went from deriving elements straight to presenting them. Now the
+      step says explicitly that it precedes the proposal, and names the failure
+      by its symptom: if you are writing "physical analogue" you have skipped it.
+      Guessed names are worth nothing here because `source_key` needs an id only
+      a search returns.
+
+      IT DRIFTED INTO GOVERNANCE METADATA. It proposed "Data Accuracy Rate" and
+      "Accuracy Threshold Value" as CDEs. Those are attestations the overlay
+      standard already captures as requirement fields — not business data
+      elements — and an earlier run had correctly identified them as catalog
+      GAPS. Creating them would produce elements permanently without columns,
+      since attach is create-only. Added a definition of what a CDE is
+      (column-shaped, lives in the data) and the counter-test: could this appear
+      in a risk warehouse table alongside the position it describes?
+
+      IT MISCOUNTED ITSELF — "I've derived six elements" above a list of seven.
+      Sixth confirmed occurrence of a model in this pipeline failing to total its
+      own output, and per the standing lesson the fix is to remove the question
+      rather than instruct harder: the prompt now forbids stating a total at all.
+      The numbered list is the count, and it cannot disagree with itself.
+
+  - version: 0.2.0
+    date: 2026-09-03
+    note: >
+      THE AGENT NOW FINDS THE COLUMNS ITSELF. `Discover CDE Columns` is gone and
+      `pdes` is sent on create. This reverses v0.1.0's central design choice, on
+      a measurement.
+
+      WHAT KILLED THE OLD DESIGN. v0.1.0 leaned on CDM's DATA_MAPPING: write a
+      good description, CDM generates search synonyms from it, discovery matches
+      those against column names. Run live on seven CDEs, every single trigger
+      returned "the synonym generator found no matchable keywords from the
+      description". Synonym generation is not part of API create — it is
+      something the UI does. So the whole discovery path was dead for
+      agent-created elements, and the demo's best beat ("write a good definition
+      and Alation finds the columns") did not survive contact.
+
+      WHY THE REPLACEMENT IS BETTER, NOT JUST AVAILABLE. DATA_MAPPING matches
+      LEXICALLY on column-name tokens — measured 2026-08-31, "gross exposure"
+      finds nothing while "exposure amount" finds EXPOSURE_AMT. An agent reading
+      Search Catalog results does semantic matching over the business title, the
+      physical name, the data type AND the containing table, so it can do what
+      the lexical matcher provably could not, and can say WHY each column
+      matched. Curation Automation has already written descriptions across the
+      instance, so there is real material to read.
+
+      HONEST COST: PDE discovery moves out of the "Alation derives it" column and
+      into ours. The demo can no longer claim the product found the columns
+      unaided. It can claim something truer — an agent read the catalog and
+      proposed the columns, and a steward accepts them. `relationship:
+      "suggested"` is what keeps that claim honest; `related` would assert links
+      the agent is not entitled to assert.
+
+      ATTACHING IS ONE-SHOT, AND THAT IS FORCED. POST /cde/{id}/pde/ takes a BARE
+      ARRAY of PDEData, so an HTTP tool cannot call it — the same wall that made
+      business-policy creation unreachable. pde/update/ is a bare array too, and
+      pde/accept/ takes no body at all (it appears to accept every suggestion at
+      once, so it cannot accept a chosen subset either). Verified from the
+      OpenAPI specs. So `pdes` on create is the only agent-reachable path,
+      exactly as with `fields`, and the prompt leads with that constraint because
+      getting it wrong is unrecoverable.
+
+      Note this makes CLAUDE.md's "do NOT send pdes[] on create" obsolete. That
+      was a design decision (let CDM discover them), not an API limitation, and
+      the decision no longer holds.
+
+      COLUMN IDENTIFICATION: source_key is alation://attribute/<id>, and the id
+      comes from Search Catalog with object_types ["column"] — verified by
+      POST_DT returning 4406. The `column`/`attribute` naming seam is a real trap
+      and is called out in both the tool schema and the prompt.
+
+      UNVERIFIED: no create carrying `pdes` has been executed. The source_key
+      format is inferred from the spec's worked examples
+      ("alation://attribute/123") plus a live column id, which is exactly the
+      shape of inference this project has been wrong about before — reading a
+      spec establishes what is forbidden, never what is allowed. First create is
+      the test.
+
+  - version: 0.1.0
+    date: 2026-09-03
+    note: >
+      New agent. Replaces `agentkit cde apply` / `cde map` on the demo path;
+      cdes.py becomes setup and reset rather than the thing a customer watches.
+
+      WHY IT CAN EXIST. Unblocked 2026-08-31 by proving the OAuth bearer alone
+      reaches /cde-service/: an empty POST to /standard/ returned 400 "Standard
+      name cannot be empty" — authenticated, reached the handler, failed only on
+      content — and a create then returned 201 with CDE 19558. So an HTTP tool
+      does not need the CDEToken two-call exchange, which it could never have
+      performed.
+
+      THE DESCRIPTION IS THE PRODUCT, and it is why the prompt opens with it
+      rather than with mechanics. CDM generates the element's search synonyms
+      from its description, and DATA_MAPPING matches those synonyms LEXICALLY
+      against column-name tokens — measured 2026-08-31, not assumed. "gross
+      exposure" finds nothing; "exposure amount" finds EXPOSURE_AMT. A
+      description written in pure business abstraction produces synonyms that
+      match no column, and the element cannot be evidenced at all.
+
+      KEYWORDS ARE NOT PASSED, deliberately, and Discover CDE Columns does not
+      declare them. Supplying payload.keywords REPLACES CDM's generated set, and
+      CDM's are better: on the GL reconciliation key our register's business
+      vocabulary found nothing while CDM's own set contained `recon key` and
+      `GL key`. Leaving them out is what makes the demo claim true — write a good
+      definition and Alation finds the columns.
+
+      `fields` IS SENT ON CREATE, and that is a correction to an earlier
+      position. A CDE created without a standard lands PARKED MID-WIZARD at
+      "Standards Assignment" — created, but unusable until a human finishes it by
+      hand. Observed in the UI 2026-09-03. Attaching on create is what makes the
+      element complete in one call.
+
+      NO ATTACH-AFTER-CREATE PATH EXISTS FOR AN AGENT. The UI reads a CDE's
+      standards at GET /cde-service/cde/{uuid}/policies/ — note `policies`, since
+      CDM standards are policy objects internally (type OVERLAY, PolicyStatus
+      enum). That path has no /integration/ segment, addresses the CDE by UUID
+      key rather than integer id, and authenticates by session cookie, so an HTTP
+      tool cannot call it. Consequence: an element created without a standard
+      cannot be repaired by this agent, which is why the prompt makes attaching
+      mandatory rather than advisory.
+
+      RISK LEVEL 3 includes reconciliation, not only computability. An
+      unverifiable risk figure is not a compliant one under BCBS 239 P7, so the
+      GL reconciliation key sits alongside the identifier, the amount and the
+      as-of date. Without that clause a model reads "cannot be computed"
+      literally and grades every reconciliation element down to 2.
+
+      THE DUPLICATE CHECK IS A BASE TOOL, and the custom one written for it was
+      deleted the same day. Deploying `tools/list_cdes.json` returned
+      `400 "Unsupported tool type: default"` — the kit resolves tools by NAME,
+      found Alation's built-in `List Critical Data Elements`, and aimed a PUT at
+      it. `default` is the base-tool type and is not writable. The built-in is
+      also better: it offers `search` over name and description, plus status,
+      risk-level, steward and domain filters.
+      That near-miss produced a guard in `agents.deploy_tool` — it now compares
+      the existing tool's `tool_type` before writing and refuses on a mismatch,
+      because the 400 was the server declining rather than the kit, and a base
+      tool with a writable type would have been silently overwritten for every
+      agent on the instance that references it.
+
+      UNVERIFIED: the agent has not been deployed or run.
+
+      Create Critical Data Element CANNOT be tested through `Test tool` while
+      `fields` is declared: the form pre-fills every declared property including
+      object arrays, always sending `fields: [{"key": ""}]`, and an empty string
+      fails UUID parsing with a 422. There is no way to empty an object-array row
+      in that form. Test it through the agent, which builds its own arguments.
+
+      ORDERING is one element at a time, create then discover, because actions
+      serialise per CDE and a concurrent trigger returns 409. Stop-on-first-
+      failure for the same reason as policy_creator, with one addition the policy
+      path does not need: a CDE can be created and then fail discovery, leaving a
+      valid element with no columns. The prompt requires that state be reported
+      by id rather than folded into "some succeeded".

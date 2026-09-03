@@ -1,0 +1,41 @@
+{
+  "$comment": "tools[] are matched BY NAME at deploy time and mapped to tool_config_ids preserving order, so the four custom tools must be deployed first (tools/list_cdes.json, fetch_cde_overlay_standards.json, create_cde.json, discover_cde_columns.json). parameter_bindings is omitted rather than empty — the API rejects bindings without tool_config_ids. `$comment` is stripped before any write; the agent create model is additionalProperties:false.",
+  "description": "Drafts Critical Data Elements in Alation's Critical Data Manager from chat, with explicit human approval before any write. Per element it resolves the published overlay standard, searches the catalog for the physical columns that actually hold the element, and creates the element with both the standard and those columns attached in a single call. Attaching is one-shot: neither a standard nor a column can be added to a CDE that already exists, because those endpoints are not reachable from an agent. Columns are attached as 'suggested' for a steward to accept. Creates drafts only — certification and column acceptance are human steps in the UI.",
+  "input_json_schema": {
+    "properties": {
+      "message": {
+        "description": "What to create, in conversation. Typically the business policies and published overlay standards created earlier in the session, or a list of elements wanted. Also needs the data source key to scope column discovery to, e.g. alation://data/2.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "type": "object"
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "llm_extra_config": null,
+  "mode": "tool_call",
+  "name": "cde_creator",
+  "output_json_schema": null,
+  "prompt": "PLACEHOLDER — populated at deploy time from prompts/cde_creator.md via `./run.sh deploy agents/cde_creator.json --prompt cde_creator`. Do not edit this field by hand; the .md file is the source of truth.",
+  "published_status": "draft",
+  "skill_names": [],
+  "tags": [
+    "bcbs239",
+    "cde",
+    "governance",
+    "agent-kit"
+  ],
+  "tools": [
+    { "name": "Search Catalog" },
+    { "name": "Get Object Fields" },
+    { "name": "List Critical Data Elements" },
+    { "name": "Fetch CDE Overlay Standards" },
+    { "name": "Create Critical Data Element" }
+  ]
+}

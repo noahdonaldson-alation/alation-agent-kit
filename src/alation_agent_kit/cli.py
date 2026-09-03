@@ -661,6 +661,19 @@ def cmd_cde(args) -> int:
                   "Manager — the kit does not accept on anyone's behalf.")
         return 0
 
+    if args.action == "score":
+        acts = ["CALCULATE_CURATION_SCORE"]
+        if args.dq_score:
+            acts.append("CALCULATE_DQ_SCORE")
+        for line in prov.score(register, acts, dry_run=not args.yes):
+            print(line)
+        if not args.yes:
+            print("\nDry run. Re-run with --yes to trigger scoring.")
+        else:
+            print("\nCuration Completeness should now show a score instead of "
+                  "N/A. Data Quality stays N/A until DQ monitors exist.")
+        return 0
+
     if args.action == "destroy":
         for line in prov.destroy(dry_run=not args.yes, only=only or None):
             print(line)
@@ -1131,7 +1144,8 @@ def build_parser() -> argparse.ArgumentParser:
     pp.set_defaults(func=cmd_policy)
 
     pc = sub.add_parser("cde", help="Provision Critical Data Elements")
-    pc.add_argument("action", choices=["plan", "apply", "map", "destroy"])
+    pc.add_argument("action",
+                    choices=["plan", "apply", "map", "score", "destroy"])
     pc.add_argument("--register", default="docs/runs/v0.6.0/run01.json",
                     help="CDE register from bcbs239_cde_dq_interpreter. NOT the "
                          "obligation register — CDE identity comes from "
@@ -1160,6 +1174,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Creation status. The API accepts nothing else; "
                          "certification happens through the workflow.")
     pc.add_argument("--steward", help="Steward source key, e.g. alation://user/1")
+    pc.add_argument("--dq-score", action="store_true",
+                    help="For `cde score`: also run CALCULATE_DQ_SCORE. Pointless "
+                         "until DQ monitors exist — the tile stays N/A.")
     pc.add_argument("--prefix", default=None, help="Namespace prefix for created CDEs")
     pc.add_argument("--state", default=".deployment-state.json")
     pc.add_argument("--yes", action="store_true",

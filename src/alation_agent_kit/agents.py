@@ -103,11 +103,15 @@ class AgentStudio:
             params["visibility_labels"] = list(self.VISIBILITY_LABELS)
         return _as_list(self.c.get(TOOL_PATH, params=params))
 
-    def resolve_tool_id(self, name: str) -> str | None:
-        """Name -> id. The list endpoint has no name filter, so match client-side.
+    def resolve_tool(self, name: str) -> dict | None:
+        """Name -> the whole tool record. No name filter server-side, so match here.
 
         Matches `name` or `function_name`, since a file may sensibly key on
         either. Ids are UUID strings here, not ints.
+
+        Returns the record rather than just the id because the caller needs
+        `tool_type` to tell a custom tool from an Alation base tool — see
+        `deploy_tool`, where writing to a base tool is a 400.
         """
         want = (name or "").strip().lower()
         hits = [t for t in self.list_tools()
@@ -117,7 +121,13 @@ class AgentStudio:
             raise RuntimeError(
                 f"{len(hits)} tools match {name!r} — names are not unique "
                 f"server-side. Ids: {[h.get('id') for h in hits]}")
-        return hits[0].get("id") if hits else None
+        return hits[0] if hits else None
+
+    def resolve_tool_id(self, name: str) -> str | None:
+        """Name -> id. Thin wrapper over `resolve_tool` for callers that only
+        need the id (agent deploy mapping `tools[]` to `tool_config_ids`)."""
+        hit = self.resolve_tool(name)
+        return hit.get("id") if hit else None
 
     def deploy_tool(self, doc: dict, dry_run: bool = False) -> dict:
         """Upsert a custom tool from a file. Tools are PUT; agents are PATCH.
@@ -153,7 +163,32 @@ class AgentStudio:
                         f"auth_config with auth_type NONE)")
 
         name = body["name"]
-        existing = self.resolve_tool_id(name) if not dry_run else None
+        hit = self.resolve_tool(name) if not dry_run else None
+
+        # A NAME MATCH IS NOT NECESSARILY OUR TOOL. Alation ships base tools, and
+        # `resolve_tool` matches on name alone, so a custom tool file that
+        # collides with a built-in resolves to the BUILT-IN and the upsert aims a
+        # PUT at it. Observed 2026-09-03 deploying a hand-written
+        # `List Critical Data Elements`, which Alation already ships:
+        #   400 {"detail": "Unsupported tool type: default"}
+        # `default` is the base-tool type; only `http` (and other custom types)
+        # are writable. The 400 saved us, but it is the server refusing rather
+        # than the kit declining — and a base tool whose type happened to be
+        # writable would have been silently overwritten. So check first.
+        if hit and hit.get("tool_type") != body["tool_type"]:
+            raise RuntimeError(
+                f"tool {name!r} already exists on this instance as tool_type "
+                f"{hit.get('tool_type')!r}, but this file declares "
+                f"{body['tool_type']!r}. `tool_type` is immutable on an existing "
+                f"tool, so this cannot be an update.\n"
+                f"  If that is an Alation BASE tool (tool_type 'default'), you "
+                f"do not need a custom one — delete the file and reference the "
+                f"base tool by name in the agent's tools[].\n"
+                f"  If you genuinely need a different tool, rename this one; "
+                f"names are how everything here resolves.\n"
+                f"  Existing id: {hit.get('id')}")
+
+        existing = hit.get("id") if hit else None
         if dry_run:
             print(f"[dry-run] tool {name!r} ({body['tool_type']}) "
                   f"{body.get('http_config', {}).get('method', '')} "

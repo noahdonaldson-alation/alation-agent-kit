@@ -1,0 +1,200 @@
+{
+  "$comment": [
+    "Creates a Critical Data Element from chat. Unblocked 2026-08-31 by proving the",
+    "OAuth bearer alone reaches /cde-service/: an empty POST to",
+    "/cde-service/integration/standard/ with CLIENT_CREDENTIALS returned 400",
+    "'Standard name cannot be empty' — authenticated, reached the handler, failed",
+    "only on content. A later create returned 200 with a real object, so the bearer",
+    "works for writes too. No CDEToken bootstrap, which an HTTP tool could never",
+    "have performed.",
+    "",
+    "`fields` IS DECLARED, AND IT MATTERS: a CDE created without a standard lands",
+    "PARKED MID-WIZARD at 'Standards Assignment' — created, but not usable until a",
+    "human finishes it. Attaching on create is what makes the CDE complete in one",
+    "call, and it is already proven: `cde apply` attaches this way and the standard",
+    "shows correctly in CDE Manager.",
+    "",
+    "CAVEAT ON TESTING IT: Agent Studio's `Test tool` form pre-fills every declared",
+    "property including object arrays, so it always sends `fields: [{key: \"\"}]`,",
+    "and an empty string fails UUID parsing (422 uuid_parsing, expected 32 chars).",
+    "There is no way to empty an object-array row in that form, so THIS TOOL CANNOT",
+    "BE TESTED THROUGH `Test tool` WITH `fields` PRESENT — test it through the agent,",
+    "which builds its own arguments. `stewards` was dropped for the same reason and",
+    "is not worth re-adding: the human sets the steward while taking the CDE from",
+    "draft to certified anyway.",
+    "",
+    "THE DESCRIPTION IS THE PRODUCT. CDM generates the CDE's search synonyms FROM",
+    "THE DESCRIPTION, and those synonyms are what DATA_MAPPING matches against",
+    "physical columns — so description quality decides whether the columns are found",
+    "at all. Matching is lexical on column-name tokens (measured 2026-08-31), so a",
+    "description naming the concept the way the warehouse spells it (identifier,",
+    "amount, key, reconciliation) produces synonyms that hit; pure business",
+    "abstraction does not.",
+    "",
+    "STATUS: only CANDIDATE or DRAFT at create time — there is no way to script a",
+    "certified CDE into someone's instance. Unlike a published standard a CDE is",
+    "fully reversible: DELETE works and POST /cde/{id}/restore/ exists.",
+    "",
+    "`pdes` IS DECLARED as of 2026-09-03, reversing the earlier position. Two",
+    "reasons, one forced and one chosen.",
+    "",
+    "FORCED: attaching on create is the ONLY agent-reachable path. The standalone",
+    "add endpoint POST /cde-service/integration/cde/{id}/pde/ takes a BARE ARRAY of",
+    "PDEData, and an HTTP tool's body is always the arguments object — the same wall",
+    "that made business-policy creation unreachable. pde/update/ is a bare array",
+    "too. pde/accept/ takes no body at all and appears to accept every suggestion at",
+    "once. So a CDE created without columns cannot be given them by an agent, and",
+    "`pdes` on create is the whole story — exactly as with `fields`.",
+    "",
+    "CHOSEN: DATA_MAPPING was the alternative and it does not work here. It matches",
+    "LEXICALLY on column-name tokens against synonyms CDM generates from the",
+    "description, and on API-created draft CDEs those synonyms do not exist —",
+    "measured 2026-09-03, seven CDEs, every trigger returned 'no matchable keywords",
+    "from the description'. Synonym generation is a UI concern. An agent reading",
+    "column names and descriptions via Search Catalog does SEMANTIC matching, which",
+    "is strictly better: 'gross exposure' can reach EXPOSURE_AMT, which the lexical",
+    "matcher provably could not.",
+    "",
+    "relationship SHOULD BE `suggested`. The enum is exactly three — control_point,",
+    "related, suggested (lowercase) — and `suggested` is what puts a column in front",
+    "of a human in CDE Manager rather than asserting the link. The demo's honesty",
+    "depends on that: the agent proposes, the steward accepts.",
+    "",
+    "source_key is alation://attribute/<id>. Catalog search calls these objects",
+    "`column`; the source key says `attribute`. Same object, two names — verified",
+    "2026-09-03 by Search Catalog returning column id 4406 for POST_DT."
+  ],
+  "name": "Create Critical Data Element",
+  "function_name": "create_critical_data_element",
+  "tool_type": "http",
+  "description": "Create a Critical Data Element in Alation's Critical Data Manager, as a draft. Takes a business name and a description, optionally a risk level and the UUID keys of published overlay standards to attach. The description matters more than anything else: Alation generates the element's search synonyms from it, and those synonyms are what the physical-column discovery matches on — so a vague description means the columns are never found. Returns the new CDE's integer id and UUID key. Creates drafts only; certification is a human workflow in the UI.",
+  "http_config": {
+    "method": "POST",
+    "url": "${ALATION_BASE_URL}/cde-service/integration/cde/",
+    "timeout_seconds": 60
+  },
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+  "input_parameter_schema": {
+    "type": "object",
+    "required": [
+      "name",
+      "description"
+    ],
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Business name of the element, e.g. 'Counterparty Identifier'. Name it the way the business says it AND the way a warehouse column would spell the concept — the trailing noun (Identifier, Amount, Key, Date) is what the synonym generator keys on."
+      },
+      "description": {
+        "type": "string",
+        "description": "HTML. The most important field. Structure it as: <p><strong>Definition:</strong> what the element is, system-independent</p><p><strong>Why It Matters:</strong> what goes wrong in a risk figure without it</p><p><strong>Governing Standards:</strong> the principles and paragraphs it derives from</p>. Name the concept in the vocabulary a data warehouse would use, not only in abstract business language — Alation generates the search synonyms from this text and matches them against column names."
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "CANDIDATE"
+        ],
+        "description": "Creation status. Only these two are accepted; everything else is reached through the CDE workflow. Default DRAFT."
+      },
+      "risk_level_value": {
+        "type": "integer",
+        "description": "1, 2 or 3. Use 3 only when an aggregated risk figure cannot be computed OR cannot be reconciled without this element; 2 when a figure is produced but cannot be sliced, reconciled or trusted in part; 1 for supporting context.",
+        "minimum": 1,
+        "maximum": 3
+      },
+      "risk_level_label": {
+        "type": "string",
+        "enum": [
+          "Low",
+          "Medium",
+          "High"
+        ],
+        "description": "Must match risk_level_value: 1=Low, 2=Medium, 3=High."
+      },
+      "risk_rationale": {
+        "type": "string",
+        "description": "Why that risk level, in one or two sentences. Say which aggregate figure breaks and how."
+      },
+      "pdes": {
+        "type": "array",
+        "description": "Physical columns to attach to this element, found with Search Catalog. Send them with relationship 'suggested' so they land in CDE Manager as suggestions a human accepts, rather than asserted links. ATTACH THEM HERE OR NOT AT ALL: the standalone add endpoint (POST /cde/{id}/pde/) takes a BARE ARRAY body, which an HTTP tool cannot produce, so there is no way to add columns to a CDE after it exists. Only include columns you actually resolved to an id in this conversation.",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "source_key",
+            "relationship"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The column's physical name, e.g. POST_DT."
+            },
+            "description": {
+              "type": "string",
+              "description": "Why this column matches the element — one line, naming the table it lives in."
+            },
+            "source_key": {
+              "type": "string",
+              "description": "alation://attribute/<numeric column id>, using the id returned by Search Catalog in this conversation. Note the object type in the key is 'attribute' even though catalog search calls these objects 'column' — they are the same object. Never construct an id you did not read from a search result."
+            },
+            "relationship": {
+              "type": "string",
+              "enum": [
+                "suggested",
+                "related",
+                "control_point"
+              ],
+              "description": "Use 'suggested' unless told otherwise — it puts the column in front of a human to accept in CDE Manager. 'related' and 'control_point' assert the link as established fact."
+            },
+            "path": {
+              "type": "array",
+              "description": "The column's location breadcrumb, outermost first: data source, then schema, then table. This is what CDE Manager renders in its 'Source path' column, e.g. 'Alation Analytics > public > time_period'. Build it from the containing schema and table that Search Catalog returned. UNVERIFIED: the only 'type' value in the published spec is 'data'; 'schema' and 'table' are inferred from the breadcrumb's shape. If a create fails validation on this field, drop it and report that rather than guessing other values — the row binds correctly without it and the path is cosmetic.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "name"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "One of data, schema, table — outermost to innermost."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "The name at that level, e.g. 'MCF Snowflake', 'mcf_risk_gold', 'fact_risk_exposure'."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "fields": {
+        "type": "array",
+        "description": "Published overlay standards to attach, as [{\"key\":\"<standard UUID>\"}]. ATTACH AT LEAST ONE. A CDE created with no standard is parked mid-wizard at Standards Assignment and is not usable until a human finishes it in the UI. Baseline Metadata and Risk Assessment Framework are added automatically and must NOT be listed here. Use the UUID key, never the integer id, and only PUBLISHED standards — drafts are not applied by CDM and are not offered in the UI. If you have no key, ask rather than sending an empty value: an empty string fails UUID parsing with a 422.",
+        "items": {
+          "type": "object",
+          "required": [
+            "key"
+          ],
+          "properties": {
+            "key": {
+              "type": "string",
+              "minLength": 32,
+              "description": "The standard's UUID key, as returned by Fetch CDE Overlay Standards in this conversation. Never a key from memory, from an example, or inferred — resolve it every time. (No sample value is given here deliberately: a concrete UUID in a schema description is something a model will reuse verbatim instead of calling the resolver.)"
+            }
+          }
+        }
+      }
+    }
+  }
+}
