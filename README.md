@@ -4,14 +4,41 @@ Git-backed development and deployment kit for Alation Agent Studio. Prompts,
 agents, and custom tools live as files in this repo; the CLI deploys them into an
 Alation instance and runs them so you can iterate from your laptop.
 
-First workload: interpreting **BCBS 239** and proposing the Alation governance
-objects a bank should create to demonstrate compliance.
+First workload: **BCBS 239** — reading the regulation and building the Alation
+governance objects a bank needs to evidence compliance, from a numbered paragraph
+down to a column in a warehouse.
 
-> **New here? Read [GETTING-STARTED.md](GETTING-STARTED.md).** It's the
-> step-by-step walkthrough — prerequisites, the daily iteration loop, how to add
-> an agent, PyCharm setup, and a troubleshooting table. This README covers the
-> *why*: the API hazards the code works around and the design decisions behind
-> them.
+> **Running the demo?** Read [docs/demo-script.md](docs/demo-script.md). It has
+> the prerequisites, the scenes, and three things that will bite you if you
+> discover them on the day.
+>
+> **Want the summary for a leader?** [docs/executive-summary.md](docs/executive-summary.md)
+> — what was built, how reusable it is, and what was deliberately skipped.
+>
+> **New to the kit?** [GETTING-STARTED.md](GETTING-STARTED.md) is the
+> step-by-step: prerequisites, the iteration loop, adding an agent, PyCharm
+> setup, troubleshooting. This README covers the *why* — the API hazards the code
+> works around and the decisions behind them.
+
+---
+
+## What runs where
+
+**The demo path is entirely in the Alation UI.** Four agents, in sequence:
+
+| Agent | Does |
+|---|---|
+| `bcbs239_obligation_interpreter` | regulation text → obligations, one per principle |
+| `policy_creator` | obligations → business policies, with a human approving |
+| `cde_creator` | published standards → critical data elements + their columns |
+| `governance_reporter` | audits the whole chain, read-only, before and after |
+
+Between the second and third, **CDM's own AI derives the overlay standards** from
+the policy prose. We do not author those.
+
+**The kit is the setup half** — deploying prompts, agents and tools, provisioning
+and repairing objects, and measuring prompt quality across runs. That split is
+deliberate: setup may be scripted, the end-to-end experience must be in the UI.
 
 ---
 
@@ -19,23 +46,23 @@ objects a bank should create to demonstrate compliance.
 
 ```bash
 cp .env.example .env      # then fill in base URL + OAuth client
-./run.sh whoami           # verifies auth, lists visible agents
-./run.sh list agents
+./run.sh whoami           # verifies auth across all three surfaces
+./run.sh preflight        # asserts the prerequisites, read-only
 
-# Prepare the regulation text: per-principle files + bank_principles.txt (P1-P11)
+# Prepare the regulation text: per-principle files + bank_principles.txt
 .venv/bin/python scripts/extract_bcbs239.py --download
 
-# Create the agent in the Agent Studio UI with the prompt from
-# prompts/bcbs239_cde_dq_interpreter.md, then pull it into the repo
-./run.sh export <agent-name>
+# Deploy the tools, then the agents that use them
+./run.sh tool deploy tools/create_blank_policy.json      # ... and the rest
+./run.sh deploy agents/policy_creator.json --prompt policy_creator
 
-# From then on the prompt file is the source of truth
-./run.sh deploy agents/<agent-name>.json --prompt bcbs239_cde_dq_interpreter --dry-run
-./run.sh deploy agents/<agent-name>.json --prompt bcbs239_cde_dq_interpreter
-
-# Run it
-./run.sh run <agent-name> --input-file artifacts/bcbs239/bank_principles.txt -o artifacts/cde_dq.md
+# Iterate on a prompt: edit the .md, redeploy, run again
+./run.sh deploy agents/cde_creator.json --prompt cde_creator --dry-run
+./run.sh deploy agents/cde_creator.json --prompt cde_creator
 ```
+
+The prompt `.md` file is the source of truth; `deploy` pushes it into the agent.
+Never edit the `prompt` field in an agent JSON by hand.
 
 `run.sh` installs `uv` if missing (no admin rights, no Homebrew, no pre-existing
 Python), creates `.venv`, and installs the package editable so edits under
@@ -67,10 +94,16 @@ src/              the CLI and API client
 .lockfile.json    name -> UUID map. Commit this.
 ```
 
-There is no `tools/` or `workflows/` directory. Custom HTTP tools were built once
-(for chat-driven standards creation) and removed as redundant with the CLI — see
-`../INVENTORY.md`. `agentkit tool show` still exists for inspecting an instance's
-tools, which is how we discovered `Get Asset Content` was already visible.
+`tools/` holds the custom Agent Studio HTTP tools — the agents on the demo path
+are built from these plus a handful of Alation's own base tools. Each file
+carries a `$comment` block explaining why it exists and what is known to fail;
+read those before changing one. `tools/README.md` covers the conventions.
+
+`agentkit tool show <name>` inspects an instance's tools, including base tools,
+and dumps the real input schema — the only reliable statement of what a tool can
+do. Use it before writing a custom tool: Alation ships more than you expect, and
+a custom tool whose name collides with a base tool will aim a write at the
+built-in.
 
 ---
 
@@ -105,6 +138,9 @@ tools, which is how we discovered `Get Asset Content` was already visible.
 | `policy plan\|apply\|verify\|publish\|destroy` | Provision, check and tear down policies + overlay standards |
 | `policy author\|review\|assess` | Generate a spec from a register, review and approve it, check for drift |
 | `policy standards` | Dump existing overlay standards verbatim (authoritative field shapes) |
+| `policy rename --id N --from-source-policy` | Republish a standard under the right name. A published standard cannot be edited, so this creates a new version, carries its requirements forward untouched, and publishes it |
+| `policy relink --id N --source-policy P` | Re-point a standard at a live policy. **Changes the label, not the derivation** — the requirements still came from the previous policy's prose. For repairing a dev instance, never for manufacturing traceability |
+| `cde plan\|apply\|map\|score\|destroy` | Provision CDEs from a register. Superseded on the demo path by `cde_creator`; kept for setup and reset |
 
 ---
 

@@ -117,60 +117,70 @@ Check the console output for any `<- EMPTY, check the parser` flags. The parser
 matches line-leading paragraph numbers; if bis.org changes the PDF's text layer,
 that's where it breaks.
 
-## Step 4 — Create the agent in Agent Studio ⚪
+## Step 4 — Deploy the agents ⚪
 
-For CDE and DQ interpretation, feed the **combined** bank-facing principles
-(`bank_principles.txt`), not one principle at a time — CDEs are cross-cutting,
-so the model needs P2, P3, P4 and P7 in view together.
+The agents already exist as files, so deploying is the normal path. Tools first,
+because agents resolve their tools **by name** at deploy time and an unresolvable
+tool aborts the deploy:
 
-Create it in the UI first. Hand-writing agent JSON is miserable, and export
-canonicalizes it on the way back into the repo:
+```bash
+./run.sh tool deploy tools/create_blank_policy.json     # ... and the rest
+./run.sh deploy agents/policy_creator.json --prompt policy_creator --dry-run
+./run.sh deploy agents/policy_creator.json --prompt policy_creator
+```
 
-1. Agent Studio → new agent
-2. System prompt: paste the contents of
-   `prompts/bcbs239_cde_dq_interpreter.md`
-3. Input: one `message` parameter, type string
-4. Save, then paste `artifacts/bcbs239/bank_principles.txt` as the message
+`--dry-run` works offline and shows exactly what would be sent.
 
-Then capture it into the repo so the prompt is version-controlled:
+**Never edit the `prompt` field in an agent JSON by hand.** The `.md` file is the
+source of truth and `deploy` renders it in.
+
+**Creating a brand-new agent?** Build it in the Agent Studio UI first —
+hand-writing agent JSON is miserable, and export canonicalizes it on the way into
+the repo:
 
 ```bash
 ./run.sh export <agent-name>          # -> agents/<agent-name>.json
 ```
 
-Cut the `prompt` value out of that JSON and replace it with a placeholder note —
-the `.md` file is the source of truth. From then on, deploy renders it back in:
+Then cut the `prompt` value out and replace it with a placeholder note, so the
+`.md` becomes the source of truth from that point on.
+
+## Step 5 — Run it ⚪
+
+Agents on the demo path are used **in the Alation UI** — that is the point, and
+it is what the demo shows. The CLI runner is for prompt iteration, where you want
+the same input every time and the output in a file:
 
 ```bash
-./run.sh deploy agents/<agent-name>.json --prompt bcbs239_cde_dq_interpreter --dry-run
-./run.sh deploy agents/<agent-name>.json --prompt bcbs239_cde_dq_interpreter
-```
-
-**Never edit the `prompt` field in the JSON by hand.**
-
-## Step 5 — Run it from the CLI ⚪
-
-```bash
-./run.sh run <agent-name> \
+./run.sh run bcbs239_obligation_interpreter \
   --input-file artifacts/bcbs239/bank_principles.txt \
-  -o artifacts/cde_dq_interpretation.md
+  -o artifacts/obligations.json
 ```
 
-Add `-v` to watch the task poll. `/call` is asynchronous — it returns a
-`task_id` and the client polls until terminal, with a 300-second ceiling.
+Feed the interpreter the **combined** principles file rather than one principle
+at a time — obligations are cross-cutting, so the model needs them in view
+together.
+
+Add `-v` to watch the stream. Invocation uses `/chats/agent/{id}/stream`, not the
+polling path: `GET /task/{id}` 404s once a run succeeds, so a finished run looks
+like a failed one.
 
 ## Step 6 — The daily loop 🔵
 
 This is the part you'll actually spend time in.
 
 ```bash
-$EDITOR prompts/bcbs239_cde_dq_interpreter.md            # 1. edit the prompt
-./run.sh deploy agents/<agent-name>.json \
-  --prompt bcbs239_cde_dq_interpreter                    # 2. push it
-./run.sh run <agent-name> \
-  --input-file artifacts/bcbs239/bank_principles.txt     # 3. see what changed
-git add -A && git commit -m "Tighten the CDE inclusion tests"   # 4. commit what works
+$EDITOR prompts/cde_creator.md                            # 1. edit the prompt
+./run.sh deploy agents/cde_creator.json \
+  --prompt cde_creator                                    # 2. push it
+#                                                           3. run it in the UI
+git add -A && git commit -m "Nominate the gold column as control point"
 ```
+
+Record what changed and why in the prompt's `.meta.yaml` changelog as you go —
+those entries are the only record of *why* a prompt says what it says, and
+several of them exist because a plausible-looking instruction failed in a way
+that took a day to find.
 
 `./run.sh prompts` shows each prompt's content hash and the git SHA of the last
 commit touching it — so any output can be traced back to the exact prompt that

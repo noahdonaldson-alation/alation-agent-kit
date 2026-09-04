@@ -51,12 +51,68 @@ If the user gives you finished bodies, use them exactly. If they ask you to
 write them, write them to the standard above and show them for approval before
 creating anything.
 
+## Working from an obligation register
+
+This is the preferred input, and when you are given one it defines the policy
+set — you are not being asked to invent policies, you are being asked to turn
+obligations into them.
+
+A register carries `obligations[]`, and **each obligation becomes one policy.**
+The user should not have to tell you which policies to create; the register
+already did.
+
+For each obligation:
+
+- **Title** — the obligation's `title`.
+- **What the bank shall do** — from `statement`, phrased as an obligation.
+- **The quality dimensions and what must be provable** — from
+  `measurable_expectations[]`. Each carries a `dimension` (accuracy,
+  completeness, validity, uniqueness, consistency, timeliness — use the word
+  literally), an `expectation`, and an `evidence` string saying what a steward
+  must be able to produce. **The evidence strings are the most valuable text in
+  the register**: they convert almost one-for-one into the attestation fields CDM
+  generates. Carry them into the body nearly intact rather than summarising them.
+- **Thresholds** — from `threshold` and `threshold_basis`. Always give the basis;
+  a number without a reason generates a field nobody can answer.
+- **The elements it governs** — from `data_concepts[]`, using `as_stated` so the
+  policy speaks the regulation's own words.
+
+Also read `cross_cutting[]`. Those obligations span several principles and do not
+map cleanly to one policy — say so and ask, rather than forcing them into one.
+
+### Quotations: copy, never recall
+
+**Every quoted phrase must be copied character for character from a `quote`
+field in the register you were given.** They live on `citations[]` and on each
+expectation's `citation`. Copy the text and the paragraph reference together.
+
+**Never write a quotation from your knowledge of the regulation, and never
+extend one past where the register's version ends.** This is not a stylistic
+preference. A model asked to quote a well-known regulation produces quotations
+that are *verbatim correct and not in the register* — measured here, four of
+them in a single run, one of them a real quote continued past its stored ending.
+Accurate recall is exactly what makes this dangerous: on a customer's internal
+policy pack the same behaviour yields invented quotes indistinguishable from real
+ones, and the entire value of this framework is that a citation can be trusted.
+
+**Show your source for every quotation when you present the proposal**, as the
+obligation `ref` it came from — *"¶36 (OBL-03)"*. A reader can then check any
+citation against the register in seconds, and a quotation with no ref is
+immediately visible as one you should not have written.
+
+If you want to say something the register does not support with a quote, say it
+in your own words and cite the paragraph without quoting. That is always
+available and always safe.
+
 ## Your process
 
 **1. Collect what you need.**
 
-- **The policies** — a title and a body for each. The user may give you a list,
-  a register, a document, or a description of what they want.
+- **The policies.** Best case, an **obligation register** — derive one policy per
+  obligation as described above, and say which obligation each came from. A list
+  of finished titles and bodies also works, as does a description of what is
+  wanted. Ask for a register if the user seems to have one; it is the only input
+  that lets you cite the regulation safely.
 - **`owner_id`** — a numeric Alation user id. If the user gives a name or an
   email, resolve it with `Get Users`. **Never guess a user id.**
 - **`group_ids`** — numeric policy group ids, if the policies should be grouped.
@@ -68,9 +124,14 @@ titles you are about to create. Report anything that looks like a duplicate and
 let the user decide. Creating a second policy with the same title is easy and
 undoing it is not.
 
-**3. Confirm, explicitly.** Show a numbered list of the exact titles, the owner
-id, and the group ids, then ask for a clear yes — *"Create these 7 policies
-owned by user 1 in group 1?"*
+**3. Confirm, explicitly.** Show the exact titles as a numbered list, the owner
+id, and the group ids, then ask for a clear yes — *"Create these policies owned
+by user 1 in group 1?"*
+
+When you wrote the bodies, **show them too, and show every quotation with the
+obligation ref it came from.** The approval gate is the only place a wrong
+citation gets caught, and it can only do that job if the user can see what they
+are approving. A body the user has not read is not a body they approved.
 
 A qualified reply is not approval. If the user says "yes but change the third
 one", apply the change and re-confirm the whole list.

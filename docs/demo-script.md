@@ -19,32 +19,87 @@ conversation with it.*
 
 ---
 
+## Read this before you book the meeting
+
+Three things will bite you if you find them out on the day.
+
+### 1. Run full Curation Automation on the catalog first
+
+**This is not optional and it is not cosmetic.** In scene 6 an agent reads column
+descriptions to decide which physical columns hold a regulated data element. On a
+bare catalog it has nothing to read and the scene falls flat.
+
+Run Curation Automation across **all objects** on the instance, and use
+**vertical-specific prompts** rather than the stock ones — ours came from
+`#industry-vertical-financialservices`. A finance prompt set describes columns in
+the vocabulary the regulation itself uses, which is what every downstream step
+matches against.
+
+Measured, with keywords held constant: one element found **9** candidate columns
+on a bare catalog and **15** after curation. Allow time for the run to finish
+before you demo.
+
+### 2. You must create DQ standards and DQ rules yourself, in CDM
+
+Data quality cannot be provisioned by any agent or script on Alation 2026.7.1 —
+the endpoints take a request shape our tools cannot produce, and the DQ standard
+endpoint has no public API at all. See CLAUDE.md for the detail.
+
+So before the demo, if you intend to show data quality at all:
+
+- **Data Quality → Standards → New Standard.** Create at least one — Completeness
+  with a missing-count check is the simplest. A standard is reusable across every
+  element, so you only do this once.
+- **Then apply it** to a CDE's control point via **Add Data Quality** on the
+  element, and let a monitor run so the tile shows a real score.
+
+If you skip this, the Data Quality tile reads `N/A` — which is a perfectly good
+scene, see scene 6. Just decide which version you are doing beforehand.
+
+### 3. Standards must be published to work, and can never be deleted
+
+**A CDE cannot inherit anything from a draft standard.** Draft standards are not
+even offered when attaching one to an element. Publishing is what makes a
+standard govern.
+
+**And a published standard is permanent.** It cannot be deleted, unpublished, or
+rolled back. Editing one creates a new version; the old version stays in the
+selector forever. There is no undo.
+
+So: **reversible or functional, never both.** Every working deployment of this
+leaves permanent objects in the customer's instance. Say so before you run
+anything in their tenant, not after.
+
+One more that follows from it, and it is the one nobody expects: **deleting a
+policy orphans its standard, permanently and silently.** The standard survives,
+still attached to elements, still claiming it derives from a document that no
+longer exists — and nothing in the UI shows it. Get the policy set right before
+you create it.
+
+---
+
 ## Before the room
 
 | Prerequisite | Where | Notes |
 |---|---|---|
 | Data source connected, metadata harvested | UI | MCF Snowflake, `alation://data/2` |
 | Custom fields created | UI | `PII Classification`, `Sensitivity Classification`, `CDM (contains CDE)` |
-| **Curation Automation run, vertical-specific prompts** | UI | Load-bearing. See scene 2 |
+| **Curation Automation run, vertical-specific prompts** | UI | See above. Load-bearing |
 | Policy group exists | UI | Groups have no create API. `BCBS 239`, id 1 |
 | Agents + tools deployed | kit | `./run.sh deploy …`, `./run.sh tool deploy …` |
 | **Published overlay standards** | CDM, once | Permanent. Published in setup, reused every run |
+| **DQ standards created** | CDM, once | Only if you are showing scene 6's DQ half |
 
 Everything above is **setup**, and Aaron's ruling covers it: setup may be
 scripts, the end-to-end experience must be in the UI.
 
-**Reset between demos.** Delete the CDEs from scene 6 and the policies from
-scene 4 — both are deletable while they are drafts. Delete the draft standard
-you generate in scene 5. **The published standards stay and are reused**, which
-is what makes this repeatable rather than one-and-done. Scene 5 shows the
-generation and the trim; it does not publish.
-
-> **Say this to a customer before running anything in their instance:** a
-> published overlay standard is permanent — it cannot be deleted, unpublished or
-> rolled back — and publishing is *required* for it to govern anything. Reversible
-> or functional, never both. Every working deployment of this leaves objects
-> behind. Alation ships `recall`, `restore` and `bulk_delete` for CDEs and has not
-> extended them to Standards; that is the product ask.
+**Reset between demos.** Delete the CDEs from scene 6 — they are drafts and they
+delete cleanly. Delete the draft standard you generate in scene 5. **The policies
+do not need deleting**: scene 4's agent finds the existing ones and offers to
+update them rather than duplicate, which is both repeatable and a more realistic
+customer scenario than pretending the catalog is empty. **The published standards
+stay and are reused**, which is what makes this repeatable rather than
+one-and-done.
 
 ---
 
@@ -119,24 +174,47 @@ and an analyst.
 
 ## 4 — Policies, in conversation (5 min) · *pillar 1: openness*
 
-Same chat. Paste the BCBS 239 text.
+**Two agents, one after the other. Both in Agent Studio.**
 
-The agent proposes the policies the regulation implies — one per principle, each
-cited to numbered paragraphs. You review the list on screen. You say yes. It
-creates them: shell, title, description, policy group, one at a time.
+**First, `bcbs239_obligation_interpreter`.** Paste the regulation text —
+`artifacts/bcbs239/bank_principles.txt`, about 25KB, pastes fine.
+
+It returns an obligation register: one obligation per principle, each with the
+quality dimensions it implies, what a steward must be able to produce, and the
+paragraphs it derives from — quoted verbatim.
+
+> "Nobody wrote these. It read the regulation."
+
+**Then `policy_creator`.** Copy the register out and paste it in, with the owner
+and group:
+
+> Create the policies from this obligation register. Owner 1, policy group 1.
+
+It maps each obligation to a policy, shows you the titles and the bodies, and
+waits. You read them. You say yes. It creates each one — shell, title,
+description, group — before starting the next.
 
 > "You didn't fill in a form. You agreed to a list."
 
-Open Policy Center. Seven policies, each quoting the paragraphs it derives from.
+Open Policy Center and show one.
 
-**What to point at:** the verbatim quotations. Every one is reproduced from the
-source document by code, not written by a model — the agent emits a *pointer* and
-the kit substitutes the exact text, so a citation cannot drift. That design
-exists because a model asked to transcribe quotes it accurately from memory
-instead, which is worse than getting them wrong.
+**Two things to point at:**
 
-> 📌 Interpretation still runs in the kit; only creation is conversational.
-> Folding both into one chat agent is what makes this scene land as written.
+**The duplicate check.** On a second run it finds the existing policies, maps
+each obligation to the one already there, and offers to update rather than
+duplicate — matching on *meaning*, not on title. A real bank walks in with a
+policy pack already, so this is the more credible scene, and it is what makes the
+demo repeatable.
+
+**Every quotation carries the obligation it came from.** That is what makes the
+approval gate real: a citation without a reference beside it is visible on sight.
+Say why it matters if asked — a model asked to quote a well-known regulation will
+produce quotations that are word-perfect and *not in the source document*,
+recalled rather than read. Showing the source is how a reviewer catches that.
+
+> 📌 **The register is ~57KB of JSON on screen between the two agents.** Scroll
+> past it, or have the interpreter lead with a readable summary. Know it is
+> coming.
 
 ---
 
@@ -262,9 +340,87 @@ Three claims, in the customer's terms:
 
 ---
 
+## Appendix — what to paste, in order
+
+Everything below goes into Agent Studio. Nothing here is typed at a terminal.
+
+### The regulation text
+
+`artifacts/bcbs239/bank_principles.txt` — the bank-facing principles, about 25KB.
+It is gitignored, so generate it once:
+
+```bash
+.venv/bin/python scripts/extract_bcbs239.py --download
+```
+
+That downloads BCBS 239 and writes per-principle files plus the combined one.
+**Use the combined file** — obligations are cross-cutting, and the interpreter
+needs the principles in view together.
+
+When unstructured ingestion lands, this step becomes "point the interpreter at
+the PDF in the catalog" and nothing else changes.
+
+### Scene 3 — the "before" audit · `governance_reporter`
+
+> Audit the BCBS 239 governance framework on this instance. Scope catalog
+> searches to `alation://data/2` (MCF Snowflake). Walk the whole chain —
+> policies, overlay standards, critical data elements, physical columns, data
+> quality — and tell me where it breaks. Separate governance gaps from data gaps.
+
+### Scene 4a — obligations · `bcbs239_obligation_interpreter`
+
+Paste the contents of `bank_principles.txt`. No other instruction needed; the
+prompt does the rest.
+
+### Scene 4b — policies · `policy_creator`
+
+Paste the register from 4a, then:
+
+> Create the policies from this obligation register. Owner 1, policy group 1.
+
+On a repeat run it will find the existing policies and offer to update them. Take
+that option and tell it:
+
+> Replace the descriptions only — leave the existing titles unchanged.
+
+Keeping the titles preserves the `BCBS239 - ` prefix, which is how `policy
+assess` identifies our objects.
+
+### Scene 5 — standards · CDM, no prompt
+
+Critical Data Manager → Standards → **Add new Standard** → choose a policy →
+Create. Trim the generated draft live. **Do not publish** — the standards you
+attach in scene 6 were published during setup. Delete the draft afterwards.
+
+### Scene 6 — elements and columns · `cde_creator`
+
+> Read overlay standards 641, 656, 657, 658 and 659 — ignore any others,
+> including any standard derived from a policy that no longer exists. Work out
+> the full set of critical data elements needed to evidence them, and for each
+> element attach every standard it evidences. Search `alation://data/2` for the
+> physical columns, including every medallion layer an element appears in, and
+> nominate the authoritative gold-layer column as the control point. Propose
+> before creating anything.
+
+**Replace the standard ids with the ones on your instance** — `./run.sh policy
+standards` lists them, or read them in CDM. Naming them explicitly is what keeps
+the agent off any standard whose source policy has been deleted.
+
+### Scene 7 — the "after" audit · `governance_reporter`
+
+**Exactly the same prompt as scene 3, word for word.** Same question, different
+answer, is the entire point. Do not reword it.
+
+---
+
 ## Known seams
 
 Honest list, because an SE walking into this should know where it is thin.
+
+0. **Every prompt you need is in the appendix above**, along with where the
+   regulation text lives and how to generate it. If you are running this for the
+   first time, read the appendix before the scenes — the scenes explain what to
+   say, the appendix has what to paste.
 
 1. **Scene 6 has no DQ scores by default, and cannot have them without a human.**
    Scoped 2026-09-04 and closed as a point-in-time finding: DQ standard create,

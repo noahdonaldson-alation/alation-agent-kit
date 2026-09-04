@@ -47,6 +47,51 @@ agent_config:
     - Add Policy to Policy Groups
 
 changelog:
+  - version: 0.2.0
+    date: 2026-09-04
+    note: >
+      THE OBLIGATION REGISTER NOW DRIVES POLICY CREATION. Previously the agent
+      needed titles and bodies handed to it, which meant a human had already
+      decided the policy set somewhere else — usually in the terminal pipeline
+      (`policy assemble`). That made Aaron's opening false: "upload a regulation
+      and it suggests the policies" was narrated, not performed. Now a register
+      is the preferred input and each obligation becomes one policy, with the
+      body built from `statement`, `measurable_expectations[]` and `data_concepts`.
+
+      THE HARD PART IS CITATIONS, and this is a deliberate weakening with a
+      mitigation rather than a solved problem. The terminal path exists because
+      `policy_body_author` emits POINTERS and `policy assemble` substitutes the
+      register's exact text in code — a quote cannot be untraceable by
+      construction. There is no code step in chat, so the agent copies the quote
+      itself.
+
+      That is the exact thing measured to fail: `policy_author`, holding the
+      register, produced four quotations absent from it — all four verbatim
+      correct from training knowledge, one a real quote extended past where the
+      register's version ended. Prompt instruction took it from four to two, not
+      to zero. Accurate recall is what makes it dangerous; on a customer's
+      internal policy pack the same behaviour yields invented quotes nobody can
+      distinguish from real ones.
+
+      MITIGATION: every quotation must be presented with the obligation `ref` it
+      came from, and the bodies are shown in full at the approval gate. A
+      quotation without a ref is visible on sight, and a reader can check any
+      citation against the register in seconds. That moves the guarantee from
+      "impossible by construction" to "checkable by a human who is already being
+      asked to approve" — weaker, and honest about being weaker. The escape hatch
+      is stated in the prompt too: cite the paragraph without quoting, which is
+      always safe.
+
+      The terminal path is NOT retired. When citation integrity must be
+      structural rather than reviewed — a customer deployment, anything audited —
+      `policy assemble` remains the right route, and the two paths now differ in
+      guarantee rather than in capability.
+
+      UNVERIFIED: no register-driven run has been executed. The measurement that
+      matters is quote traceability — run it, then check every quotation in the
+      created policies against the register, the way `authoring.py`'s provenance
+      audit does for the terminal path.
+
   - version: 0.1.0
     date: 2026-08-31
     note: >
