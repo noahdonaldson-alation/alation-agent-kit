@@ -1,0 +1,59 @@
+{
+  "$comment": [
+    "NEW 2026-09-04, and it exists because governance_reporter's first run made a",
+    "confident FALSE claim without it.",
+    "",
+    "THE FAILURE: asked which standards each CDE carries, the agent read the CDE",
+    "list, found `sources` empty on every element, and reported 'no standard is",
+    "formally attached to any CDE'. That is wrong — Position As-of Date visibly",
+    "carries four BCBS 239 standards in CDE Manager. Standards attach through",
+    "`fields`, NOT `sources`; a CDE's `sources` is something else entirely. The",
+    "agent had no way to see `fields`, so it answered from the nearest field that",
+    "looked plausible.",
+    "",
+    "Same shape as the standards list/detail split: a LIST is a summary, and an",
+    "agent asked to reason about what a list does not carry will reason from what",
+    "it does. The fix is the detail read, not a sterner instruction.",
+    "",
+    "This also supplies PDE relationships. Without it the reporter cannot tell a",
+    "`control_point` from a `suggested` column, and control-point coverage is half",
+    "the data-quality story — a column that is merely suggested cannot carry a",
+    "monitor at all.",
+    "",
+    "UNVERIFIED: this path is the documented get-one sibling of the CDE list and",
+    "create endpoints, both proven. It has not been called. Test it through",
+    "`Test tool` first — it declares one scalar, so unlike Create Critical Data",
+    "Element it can be."
+  ],
+
+  "name": "Fetch Critical Data Element Detail",
+  "function_name": "fetch_critical_data_element_detail",
+  "tool_type": "http",
+
+  "description": "Read one Critical Data Element in full, by its integer id — including the overlay standards attached to it and its physical data elements with the relationship of each (control_point, related or suggested). Use this whenever you need to know what actually governs an element or which columns it is bound to: the CDE list is a summary and carries neither. Note that attached standards appear under 'fields', not under 'sources' — a CDE's sources field is unrelated to its standards, and reading it instead will tell you an element is ungoverned when it is not.",
+
+  "http_config": {
+    "method": "GET",
+    "url": "${ALATION_BASE_URL}/cde-service/integration/cde/{cde_id}/",
+    "timeout_seconds": 60
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "required": ["cde_id"],
+    "properties": {
+      "cde_id": {
+        "type": "integer",
+        "description": "The element's integer id, as returned by List Critical Data Elements. Not its UUID key."
+      }
+    }
+  }
+}

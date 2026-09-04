@@ -204,8 +204,35 @@ steward accepts.
 > claim is stronger anyway: an agent read your catalog, explained why each column
 > matched, named what was missing, and a human accepts.
 
-> ⚠️ **DQ monitors are not built.** The Data Quality tile reads `N/A`. Say
-> plainly that monitors are the next step, and don't open the tile.
+**Data quality — optional, and worth knowing why.**
+
+The Data Quality tile reads `N/A`, and that is a deliberate stopping point rather
+than an unfinished one. Monitors cannot be created by an agent on Alation
+2026.7.1: creating a DQ standard, creating a monitor, and changing a PDE's
+relationship on an existing element are all blocked by request bodies we cannot
+produce from a tool, and the DQ standard endpoint additionally has no public API
+and authenticates by session cookie. Full detail in CLAUDE.md.
+
+**So DQ is setup, like RBAC and policy groups — and the demoer chooses.** Two
+honest ways to play the scene:
+
+- **Leave it empty and make it the finding.** "Nothing is monitoring these
+  elements yet, and the framework has just told you which nine need it." That
+  leads straight into scene 7 and costs nothing.
+- **Build it live, if you have five minutes and a prepared standard.** Data
+  Quality → Standards → New Standard once, then on a CDE: Add Data Quality →
+  pick the control point → apply the standard → schedule. It is four steps in the
+  UI and it makes the tile real.
+
+If you do build it, the alignment is worth saying out loud: Alation's check
+categories are **Completeness, Accuracy, Validity, Uniqueness, Timeliness** — the
+same dimensions BCBS 239 names, and the same ones the obligation register
+carries. The regulation's vocabulary and the product's are the same vocabulary.
+
+**One prerequisite the agent handles for you:** monitors can only be applied to
+PDEs marked `control_point`, and `cde_creator` nominates the authoritative gold
+column as the control point at create time. Without that, the wizard's column
+list comes up empty and every element needs a manual promotion first.
 
 ---
 
@@ -239,8 +266,14 @@ Three claims, in the customer's terms:
 
 Honest list, because an SE walking into this should know where it is thin.
 
-1. **Scene 6 has no DQ scores.** Biggest hole, and it is in the pillar Aaron
-   cares most about. Nothing has been built and no create API has been scoped.
+1. **Scene 6 has no DQ scores by default, and cannot have them without a human.**
+   Scoped 2026-09-04 and closed as a point-in-time finding: DQ standard create,
+   monitor create and PDE relationship update are all bare-array bodies, and the
+   DQ standard endpoint has no public API and uses cookie auth. So monitors are a
+   declared prerequisite built in the UI, not something the pipeline provisions.
+   This is the biggest remaining hole in the pillar Aaron cares most about, and
+   the fix is a product ask rather than a build — see CLAUDE.md for the exact
+   three endpoints.
 2. **Scene 4 is split** across kit and chat. Interpretation is a terminal step.
 3. **Real PDF ingestion is blocked** on an FDE feature flag, so the regulation
    arrives as pasted text rather than as an S3 document in the catalog. That is

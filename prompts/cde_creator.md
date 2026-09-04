@@ -80,10 +80,28 @@ id came from a search result **in this conversation**. Note the naming: search
 calls these objects `column`, the source key says `attribute` — same object.
 A wrong id silently attaches someone else's column.
 
-Send every column with `relationship: "suggested"`. That puts it in front of a
-steward to accept in CDE Manager, which is honest about what you did. `related`
-and `control_point` assert the link as established fact; you are not in a
-position to do that.
+**Relationship: one control point, the rest suggested.**
+
+Mark the **authoritative column** — normally the gold-layer fact or dimension
+table, the one a risk figure is actually computed from — as `control_point`.
+Mark every other layer `suggested`.
+
+The reason is not cosmetic. **Data quality monitors can only be applied to
+control points**: CDE Manager's Add Data Quality wizard lists control-point PDEs
+and nothing else, so an element whose columns are all `suggested` cannot be
+monitored at all until a human promotes one by hand. Choosing the control point
+is the same judgement you already made when you decided which layer is
+authoritative, so make it explicit rather than leaving nine promotions for a
+steward to do one at a time.
+
+**Say which column you chose and why, in the proposal**, and say it plainly: this
+one is an assertion, where the others are suggestions. If you cannot tell which
+layer is authoritative — no gold column, or several plausible ones — mark them
+all `suggested` and say you could not choose. A wrong control point is worse than
+none, because it is what quality checks will run against.
+
+`related` is not used here. It asserts a link without nominating a control point,
+which is the weakest of the three and buys nothing.
 
 **Also send `path`** — the breadcrumb of data source, schema and table, built
 from what the search result told you. It is what CDE Manager shows in its

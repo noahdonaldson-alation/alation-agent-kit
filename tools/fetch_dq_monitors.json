@@ -1,0 +1,80 @@
+{
+  "$comment": [
+    "READ-ONLY. The report agent's window onto data quality.",
+    "",
+    "WHY ONLY A READ: every WRITE on the native DQ surface is a bare array body —",
+    "POST /monitor, PUT /monitor, PATCH /check — so an HTTP tool cannot create or",
+    "change a monitor. DQ standards are worse: no public API at all, and the",
+    "internal /api/dq/standards is bare-array AND cookie-authenticated. Scoped and",
+    "closed 2026-09-04; see the DQ section in CLAUDE.md. Do not add a create tool",
+    "here without new endpoints.",
+    "",
+    "The GET is fine: query parameters, BearerAuth, no body. Verified from the",
+    "published spec (Native Data Quality API, 2026.7.1-0).",
+    "",
+    "MONITORS BIND TO COLUMNS, NOT TO CDEs. There is no cde_id field on Monitor or",
+    "Check, and no CDE filter on either list endpoint — verified across both",
+    "schemas. So the join back to a CDE is done by the CALLER: take the CDE's PDE",
+    "source keys (alation://attribute/<id>), and match them against the table_id /",
+    "column ids these monitors cover. That join is the whole reason this tool",
+    "exists, and it is why the agent must read PDEs before it reads monitors."
+  ],
+
+  "name": "Fetch DQ Monitors",
+  "function_name": "fetch_dq_monitors",
+  "tool_type": "http",
+
+  "description": "List the data quality monitors configured in this Alation instance, with the tables and columns each one covers, its schedule, priority and owners. Monitors bind to a data source, table and column — never to a Critical Data Element — so to find out whether a CDE is monitored you must match the columns behind its physical data elements against the columns these monitors cover. Read-only: monitors cannot be created or changed through an agent.",
+
+  "http_config": {
+    "method": "GET",
+    "url": "${ALATION_BASE_URL}/integration/v1/native_data_quality/monitor",
+    "timeout_seconds": 60
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "properties": {
+      "ds_id": {
+        "type": "integer",
+        "description": "Restrict to one data source, e.g. 2 for MCF Snowflake. Use it — an unscoped read returns every monitor on the instance."
+      },
+      "table_ids": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "Restrict to specific tables, by numeric table id."
+      },
+      "schema_ids": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "Restrict to specific schemas, by numeric schema id."
+      },
+      "monitor_ids": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "Fetch specific monitors by id."
+      },
+      "priority": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "critical"],
+        "description": "Filter by monitor priority."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum monitors to return."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Pagination offset."
+      }
+    }
+  }
+}

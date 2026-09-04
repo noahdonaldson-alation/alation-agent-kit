@@ -1,0 +1,45 @@
+{
+  "$comment": "tools[] are matched BY NAME at deploy time and mapped to tool_config_ids preserving order, so the custom tools must be deployed first (tools/find_business_policies.json, fetch_cde_overlay_standards.json, fetch_cde_overlay_standard_detail.json, fetch_dq_monitors.json, fetch_dq_checks.json). `List Critical Data Elements` and `Search Catalog` are Alation BASE tools and are referenced by name, not built. Every tool here is a READ — this agent has no write path by construction. parameter_bindings is omitted rather than empty; the API rejects bindings without tool_config_ids.",
+  "description": "Audits an Alation governance framework as it actually exists and reports where the chain breaks — regulation to policy to overlay standard to critical data element to physical column to data quality check. Finds standards whose source policy was deleted, standards that govern nothing, elements with no control point and therefore no possibility of monitoring, control points nothing tests, and requirements the warehouse holds no data to evidence. Separates governance gaps, which are fixed by doing the work, from data gaps, which need an engineering change. Read-only: it writes nothing and names what a human must act on.",
+  "input_json_schema": {
+    "properties": {
+      "message": {
+        "description": "What to audit, in conversation. Typically the regulation or policy set to assess, plus the data source key to scope catalog searches to, e.g. alation://data/2. Can also be narrowed to one standard or one element.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "type": "object"
+  },
+  "llm": {
+    "default_llm_ref": "bedrock_us-east-1:us.anthropic.claude-sonnet-4-6",
+    "model_name": null,
+    "provider": "bedrock_us-east-1"
+  },
+  "llm_extra_config": null,
+  "mode": "tool_call",
+  "name": "governance_reporter",
+  "output_json_schema": null,
+  "prompt": "PLACEHOLDER — populated at deploy time from prompts/governance_reporter.md via `./run.sh deploy agents/governance_reporter.json --prompt governance_reporter`. Do not edit this field by hand; the .md file is the source of truth.",
+  "published_status": "draft",
+  "skill_names": [],
+  "tags": [
+    "bcbs239",
+    "governance",
+    "gap-analysis",
+    "agent-kit"
+  ],
+  "tools": [
+    { "name": "Find Business Policies" },
+    { "name": "Fetch CDE Overlay Standards" },
+    { "name": "Fetch CDE Overlay Standard Detail" },
+    { "name": "List Critical Data Elements" },
+    { "name": "Fetch Critical Data Element Detail" },
+    { "name": "Query CDE Physical Data Elements" },
+    { "name": "Fetch DQ Monitors" },
+    { "name": "Fetch DQ Checks" },
+    { "name": "Search Catalog" }
+  ]
+}

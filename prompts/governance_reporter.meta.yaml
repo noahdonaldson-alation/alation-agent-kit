@@ -1,0 +1,189 @@
+name: governance_reporter
+purpose: >
+  Audits the governance chain as it exists on a live instance — regulation →
+  policy → standard → CDE → column → DQ check — and reports where it breaks,
+  separating governance gaps (nobody set it up) from data gaps (the warehouse
+  does not hold it).
+
+  This is target-sequence step 7 and the whole of the Feedback-loop pillar. It is
+  also the demo's opening hook (scene 3, run before anything exists) and its
+  closing payoff (scene 7, run again after).
+
+target_agent: governance_reporter
+
+model:
+  provider: bedrock
+  name: claude-sonnet-4-6
+  region: us-east-1
+  # Sonnet because this is judgement work throughout: deciding whether a check
+  # category satisfies a requirement, whether an absent column is genuinely
+  # absent or badly searched for, and how to rank findings by severity.
+
+deploy_variables: {}
+
+output:
+  format: markdown
+  schema: null
+  # A report a governance lead reads and acts on. Deliberately NOT a JSON
+  # contract — an earlier design had a Flow render a report from mapper JSON, and
+  # the lesson there was that a presentation step which recomputes anything
+  # eventually contradicts its own input. This agent reads the instance directly
+  # and is the only thing making claims about it.
+
+input_contract:
+  mechanism: input_parameter
+  parameter: message
+  type: string
+  produced_by: >
+    A human, in chat. Typically "audit the BCBS 239 framework" plus the data
+    source to scope catalog searches to.
+
+agent_config:
+  mode: tool_call
+  tools:
+    # Every one of these is a READ. The agent has no write path by construction,
+    # not by instruction.
+    - Find Business Policies          # do the standards' source policies exist?
+    - Fetch CDE Overlay Standards     # latest_published_only, type OVERLAY
+    - Fetch CDE Overlay Standard Detail  # the requirements themselves
+    - List Critical Data Elements     # base tool; limit 100, latest_only
+    - Fetch Critical Data Element Detail  # `fields` = the attached standards
+    # Alation BASE tool, found rather than built. Takes the CDE's UUID key (not
+    # its integer id) and returns each column's `relationship`. Two traps: limit
+    # defaults to 10, and its own description advises filtering `suggested` out —
+    # correct for a curation agent, wrong for an auditor, since suggested columns
+    # are the finding. Returns source_key as alation://column/<id> where the
+    # create path uses alation://attribute/<id>; same object, two spellings.
+    - Query CDE Physical Data Elements
+    - Fetch DQ Monitors               # which columns are watched
+    - Fetch DQ Checks                 # what is actually asserted about them
+    - Search Catalog                  # does the data the regulation needs exist
+
+changelog:
+  - version: 0.1.2
+    date: 2026-09-04
+    note: >
+      The no-counting rule is rewritten to something achievable. v0.1.0 and
+      v0.1.1 both banned totals outright and BOTH runs produced them anyway
+      ("Five published standards" over a list of six; "Eight CDEs Have No Control
+      Point"). An instruction broken twice running is not going to start holding.
+
+      The rule now permits a count ONLY when the things counted are enumerated
+      immediately below it, which is self-checking, and forbids it anywhere a
+      reader cannot verify it on the spot — summaries especially. Percentages,
+      coverage scores and maturity ratings stay banned outright, since nothing
+      checks them. Consistent with the standing lesson: redesign the output so
+      the wrong answer is not expressible, rather than asking more firmly.
+
+      v0.1.1 VERIFIED FIXED by the second run. Attached standards are now read
+      from `fields` — Position As-of Date correctly reported as carrying four
+      overlapping standards, where v0.1.0 claimed nothing was governed anywhere.
+      The control-point table now has a tool behind it and names attribute 4666
+      as the single accepted control point.
+
+      AND THE DETAIL CALL BOUGHT A FINDING WE COULD NOT SEE BEFORE: every derived
+      requirement on every standard carries `value: null` and `accepted: false`.
+      The framework is structurally complete and entirely unanswered — no steward
+      has attested to anything. That is a different and better finding than "no
+      standards are attached", and it is the one a governance lead would act on
+      first.
+
+      Epistemics improved without being asked: on accuracy rates the report said
+      the gap "cannot be called absent with certainty" until someone inspects
+      `vw_risk_cde_quality_status`, rather than declaring a data gap it could not
+      prove. It also noticed `IS_MISSING_INDUSTRY` flags as evidence that a
+      quality concern is already tracked at the engineering level.
+
+  - version: 0.1.1
+    date: 2026-09-04
+    note: >
+      First run produced a strong report containing one FALSE finding, and the
+      fix is a tool rather than an instruction.
+
+      THE FALSE FINDING: "no CDE's sources array references any overlay standard
+      ... no standard is formally attached to any CDE". Demonstrably wrong —
+      Position As-of Date carries four BCBS 239 standards, visible in CDE
+      Manager. Standards attach through `fields`; a CDE's `sources` is unrelated.
+      The agent had only the CDE LIST, which carries neither, so it reasoned from
+      the nearest field that looked plausible and reported a false all-clear on
+      the most important question in the report.
+
+      Exactly the same shape as the standards list/detail split fixed in
+      cde_creator v0.3.0: a list is a summary, and an agent asked to reason about
+      what a list does not carry will reason from what it does. Added
+      `Fetch Critical Data Element Detail` (GET /cde-service/integration/cde/{id}/),
+      which returns both `fields` and the PDEs with their relationships.
+
+      That second half matters independently: without it the agent cannot tell a
+      `control_point` from a `suggested` column, and the first run produced a
+      precise per-element control-point table with no tool behind it. The numbers
+      happened to look right; the provenance did not exist. The prompt now
+      forbids stating a property no tool reported and says plainly that an
+      admitted gap beats an authoritative-looking table built from inference.
+
+      ALSO: it counted, and miscounted twice — "Five published standards" heading
+      a list of six, and "Eight of nine CDEs". v0.1.0 already forbade totals. The
+      rule is now explicit that this includes headings and "N of M" phrasing, and
+      draws the line at numbers READ from a tool result versus numbers DERIVED by
+      counting rows. Eighth occurrence in this pipeline.
+
+      A third guard added from the same root cause: a missing field is not a
+      negative finding. The likeliest explanation for an absent value is the
+      wrong endpoint, not a broken customer framework.
+
+      WHAT WORKED, and is worth keeping: the orphaned-standard check led the
+      report and correctly identified 654 and 655 as deriving from deleted
+      policies 4 and 1. The governance/data gap split held. The data gaps were
+      specific enough to hand to an engineer — a reconciliation run log, accuracy
+      rate storage, a timeliness SLA record store — and it found the
+      COUNTRY_OF_RISK_CD type anomaly on its own.
+
+  - version: 0.1.0
+    date: 2026-09-04
+    note: >
+      New agent. The last outstanding build in the target sequence, and the only
+      one of the three remaining pieces that is fully reachable — every call it
+      makes is a GET or an object-bodied POST on the OAuth bearer.
+
+      WHY IT IS READ-ONLY BY CONSTRUCTION, not by instruction: the writes it
+      might otherwise want are all blocked anyway. DQ standard create, monitor
+      create and PDE relationship update are bare-array bodies, and the DQ
+      standard endpoint has no public API and uses cookie auth (scoped and closed
+      2026-09-04). So an auditing agent is not a compromise here — it is the only
+      shape available, and it happens to be the right one: an auditor that can
+      fix what it finds is an auditor you cannot trust.
+
+      THE FINDING IT EXISTS FOR. On 2026-09-03 we discovered by hand that six of
+      seven overlay standards derived from policies that had been deleted — the
+      standards still governed elements while claiming provenance from documents
+      that no longer existed, and nothing in the UI showed it. That is the single
+      highest-severity check this agent makes, and it is the argument for the
+      agent existing at all: the failure was invisible, permanent, and would have
+      been demoed to a customer.
+
+      TWO DISCIPLINES CARRIED IN FROM HARD EXPERIENCE:
+
+      No totals, anywhere. Not counts, not percentages, not coverage scores. Five
+      confirmed occurrences of models in this pipeline miscounting their own
+      output, and instruction has never fixed it — twice in `cde_creator` alone.
+      A report that names its findings cannot contradict itself; one that counts
+      them can and eventually does.
+
+      Governance gaps and data gaps are reported separately and never merged.
+      "Your data does not support this obligation" and "somebody has not filled
+      this in" require different people to do different things, and conflating
+      them is the most misleading thing a report like this can do.
+
+      IT ALSO REPORTS WHAT IT COULD NOT CHECK. An audit with a silent hole reads
+      as an all-clear over the part it never reached.
+
+      UNVERIFIED: not deployed or run. `Fetch DQ Monitors` and `Fetch DQ Checks`
+      are new and have never been called — both are documented GETs on BearerAuth
+      with query parameters, which is the safest shape we deal with, but that is
+      an inference from a spec and not a measurement.
+
+      OPEN: reading a CDE's PDEs. `POST /cde/{id}/pde/query/` is object-bodied and
+      therefore reachable, but Alation appears to ship a base tool for it
+      (`Query CDE Physical Data Elements`). Check before building a custom one —
+      a name collision with a base tool aimed a PUT at a built-in on 2026-09-03,
+      and `deploy_tool` now refuses that rather than relying on the server to.

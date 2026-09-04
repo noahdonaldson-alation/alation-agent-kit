@@ -1,0 +1,91 @@
+{
+  "$comment": [
+    "READ-ONLY, and the finer-grained half of the DQ read. A monitor says WHICH",
+    "columns are watched; a check says WHAT is being asserted about them — the",
+    "category, the metric, the operator and the threshold.",
+    "",
+    "That distinction matters for the report. 'This element has a monitor' is a",
+    "weak statement. 'This element is checked for completeness but nothing tests",
+    "its accuracy, and the standard governing it requires a measured accuracy rate'",
+    "is the finding worth reporting, and it needs the checks, not the monitors.",
+    "",
+    "`category` is exactly the vocabulary the regulation uses: accuracy,",
+    "completeness, validity, uniqueness, consistency, timeliness, custom. BCBS 239",
+    "names the same dimensions, so a requirement in a standard can be compared to a",
+    "check category almost directly.",
+    "",
+    "CheckResponse carries NO reference to the DQ standard it came from — verified",
+    "2026-09-04. The UI shows a 'From standard' pill, but there is no standard_id",
+    "field and no from_standard filter, so an agent cannot tell whether a check was",
+    "created from a standard or by hand. Do not report on that; it is not knowable",
+    "from here.",
+    "",
+    "PATCH on this path is a bare array, so checks are readable and not writable.",
+    "See the DQ section in CLAUDE.md before proposing otherwise."
+  ],
+
+  "name": "Fetch DQ Checks",
+  "function_name": "fetch_dq_checks",
+  "tool_type": "http",
+
+  "description": "List the individual data quality checks running in this Alation instance — for each one the category (accuracy, completeness, validity, uniqueness, consistency, timeliness), the metric being measured, the operator and threshold, the table and column it runs against, and whether it is enabled. Use this to say what a column is actually tested for, rather than only whether some monitor covers it. Read-only.",
+
+  "http_config": {
+    "method": "GET",
+    "url": "${ALATION_BASE_URL}/integration/v1/native_data_quality/check",
+    "timeout_seconds": 60
+  },
+
+  "auth_config": {
+    "name": "Alation OAuth (client credentials)",
+    "auth_type": "CLIENT_CREDENTIALS",
+    "client_id": "${ALATION_CLIENT_ID}",
+    "client_secret": "${ALATION_CLIENT_SECRET}",
+    "token_url": "${ALATION_BASE_URL}/oauth/v2/token/"
+  },
+
+  "input_parameter_schema": {
+    "type": "object",
+    "properties": {
+      "ds_ids": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "Restrict to specific data sources, e.g. [2] for MCF Snowflake."
+      },
+      "table_ids": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "Restrict to specific tables, by numeric table id."
+      },
+      "monitor_ids": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "Restrict to the checks belonging to specific monitors."
+      },
+      "category": {
+        "type": "string",
+        "description": "Filter by check category: accuracy, completeness, validity, uniqueness, consistency, timeliness or custom. These are the same dimensions BCBS 239 names, so a category maps almost directly onto a standard's requirement."
+      },
+      "metric_name": {
+        "type": "string",
+        "description": "Filter by the metric being measured, e.g. missing_count."
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Filter to enabled or disabled checks. A disabled check is not testing anything — worth reporting separately from an absent one."
+      },
+      "search": {
+        "type": "string",
+        "description": "Free-text search over checks."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum checks to return. Server maximum is 1000."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Pagination offset."
+      }
+    }
+  }
+}
