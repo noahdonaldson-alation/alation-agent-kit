@@ -16,6 +16,20 @@
 # is live, or teardown loses track of what it made.
 .deployment-state*.json
 
+# Agent name -> UUID map. Instance-specific, for the same reason as the state
+# file above: a UUID minted on one tenant means nothing on another.
+#
+# This was committed until 2026-09-08, and it bit exactly as you would expect.
+# Cloning the repo to deploy into a second tenant carried the first tenant's
+# UUIDs along with it, and `deploy` checks the lockfile before doing a live
+# name match — so it looks up an agent, finds an id that exists nowhere on the
+# target, and fails confusingly instead of creating cleanly.
+#
+# The settled delivery model is a clonable package deployed into a CUSTOMER's
+# instance, so every clone shipping the previous tenant's ids was a bug waiting
+# for its second user. Keep it local; `deploy` rebuilds it by name match.
+.lockfile.json
+
 # Python
 .venv/
 venv/

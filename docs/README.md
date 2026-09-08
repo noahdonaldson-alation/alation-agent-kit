@@ -8,6 +8,7 @@ Reviews and curated evidence for the prompts in this repo.
 |---|---|
 | **`demo-script.md`** | **The demo, for a Deployment Strategist.** Seven scenes, three pillars, and three prerequisites that will bite you if you find them out on the day — Curation Automation, DQ standards, and the permanence of published standards |
 | **`executive-summary.md`** | **For a leader.** What was built, how reusable it is, what was deliberately skipped and why, and what a customer must be told before anything runs in their instance |
+| **`new-tenant-setup.md`** | **Standing this up somewhere new.** Ordered so everything reversible happens before anything permanent, with the per-tenant values you must change and the entitlements to check first |
 
 ### Method
 
