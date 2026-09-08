@@ -66,6 +66,18 @@ def _expand_env(obj: Any) -> Any:
                     f"tool config references ${{{name}}} but it is not set in the "
                     f"environment or .env. Set it before deploying — sending the "
                     f"literal placeholder would store a broken credential.")
+            # Strip a trailing slash on URL variables. Tool templates are written
+            # "${ALATION_BASE_URL}/cde-service/...", so a base URL that ends in "/"
+            # deploys a URL containing "//" — and the kit does not notice, because
+            # Settings.from_env() rstrips it while this did not. Two readers of one
+            # variable, one normalising and one not.
+            # Measured 2026-09-08 on gartner2026.mtse, where .env carried a trailing
+            # slash: "…com//cde-service/integration/standard/" returned 404 from an
+            # agent while the identical single-slash path returned 200 from the kit
+            # seconds earlier in preflight. governance_reporter then reported the
+            # CDM module as broken and advised raising an Alation Support ticket.
+            if name.endswith("_URL"):
+                val = val.rstrip("/")
             return val
         return re.sub(r"\$\{([A-Z_][A-Z0-9_]*)\}", sub, obj)
     return obj
