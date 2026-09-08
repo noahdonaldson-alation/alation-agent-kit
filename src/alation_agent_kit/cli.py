@@ -28,7 +28,7 @@ from .client import AI_V1, AlationClient
 from .invoke import extract_text, run_agent, run_agent_stream
 from .prompts import list_prompts, load_prompt, sync_prompt_into_agent
 from .store import extract_json as extract_json_text
-from .store import read_json, write_json
+from .store import llm_identity, read_json, write_json
 
 
 def _studio() -> AgentStudio:
