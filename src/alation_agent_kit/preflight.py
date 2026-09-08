@@ -215,14 +215,33 @@ def check_unstructured(c: AlationClient) -> list[Check]:
         from .agents import AgentStudio
 
         tools = AgentStudio(c).list_tools()
-        names = [str(t.get("name") or t.get("function_name") or "").lower()
-                 for t in tools]
-        found = [n for n in names
-                 if any(k in n.replace(" ", "_") for k in CONTENT_TOOL_NAMES)]
+        matches = [
+            t for t in tools
+            if any(k in str(t.get("name") or t.get("function_name") or "")
+                   .lower().replace(" ", "_") for k in CONTENT_TOOL_NAMES)
+        ]
+        # PRESENCE IN THIS LISTING IS NOT EVIDENCE OF USABILITY. list_tools()
+        # deliberately asks for all four visibility labels, so a tool that ships
+        # as `alation_internal` appears here while being unbindable in Agent
+        # Studio until an FDE raises it. This check previously matched on name
+        # alone and reported OK on gartner2026.mtse (2026-09-08) for a tool whose
+        # record read `"visibility_label": "alation_internal"` — a false green on
+        # the single prerequisite it exists to catch.
+        # `visibility_label` on the tool record is the authoritative field.
+        usable = [t for t in matches
+                  if str(t.get("visibility_label") or "").lower()
+                  != "alation_internal"]
+        if usable:
+            detail = ", ".join(str(t.get("name")) for t in usable)
+        elif matches:
+            detail = ", ".join(
+                f"{t.get('name')} is present but visibility_label="
+                f"{t.get('visibility_label')!r} — NOT bindable to an agent"
+                for t in matches)
+        else:
+            detail = f"not among {len(tools)} visible tool(s)"
         out.append(Check(
-            "get_asset_content tool visible", bool(found),
-            ", ".join(found) if found else
-            f"not among {len(names)} visible tool(s)",
+            "get_asset_content tool bindable", bool(usable), detail,
             required=False,
             fix="The tool ships as ALATION_INTERNAL. An FDE must raise its "
                 "visibility via PUT /ai/api/v1/admin/tool_configs/{uuid}/"
