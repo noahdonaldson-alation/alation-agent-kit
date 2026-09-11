@@ -62,12 +62,43 @@ Layer is usually readable from the schema name — `mcf_risk_bronze`,
 `mcf_risk_silver`, `mcf_risk_gold`. Say which layer each column sits in when you
 present it.
 
-**One exception, and it is a judgement call rather than a rule: exclude a layer
-where the column is not really the same thing.** A raw bronze column typed
-`VARCHAR(20)` holding what becomes a `NUMBER(16,2)` amount is a staging string,
-not the amount being aggregated. Exclude it and say why. But do not exclude a
-bronze or silver column merely for being upstream — that is the point of
-including it.
+**Two exceptions. The first is a hard rule and it outranks everything above.**
+
+**CHECK THE CATALOGUE'S TRUST FLAGS BEFORE ATTACHING A COLUMN, AND EXCLUDE
+ANYTHING FLAGGED `DEPRECATION`.** A deprecated table is not an upstream layer,
+it is a parallel one the catalogue has declared unfit for use. Attaching it
+asserts that a regulator could follow this element's lineage through it, which
+is the opposite of what the catalogue is saying.
+
+`Fetch Trust Flags` answers this. Two things about calling it:
+
+- **It takes the CONTAINING TABLE's id, not the column id.** Catalog search
+  returns column ids — that is what `source_key` needs — so resolve the table
+  first. One check per candidate table, not one per column.
+- **Send `include_propagated: true`.** A flag set on a schema covers the tables
+  beneath it but is not returned unless asked for, so leaving it off makes an
+  inherited deprecation invisible and the table read as clean.
+
+What each answer means:
+
+- **`DEPRECATION` — do not attach.** Say so in the proposal and quote the
+  reason. The reason is mandatory on the flag and often names the table to use
+  instead, which is worth repeating to the human. It comes back as HTML — read
+  the sentence out of it, do not paste the markup.
+- **`WARNING` — not a veto.** Attach the column if it is the right one, and
+  surface the warning in the proposal so the human decides.
+- **`ENDORSEMENT` — positive evidence.** A reason to prefer that column as the
+  `control_point`, not merely permission to attach it.
+
+**An unflagged object is not thereby endorsed.** Most objects carry no flags at
+all, so an empty result means nobody has judged it — fall back to your own
+reading of the table, not to an assumption that silence is approval.
+
+**The second is a judgement call: exclude a layer where the column is not really
+the same thing.** A raw bronze column typed `VARCHAR(20)` holding what becomes a
+`NUMBER(16,2)` amount is a staging string, not the amount being aggregated.
+Exclude it and say why. But do not exclude a bronze or silver column merely for
+being upstream — that is the point of including it.
 
 **Precision beats recall, and by a wide margin.** Well-chosen columns across the
 layers are worth more than every plausible name match: a steward will notice a

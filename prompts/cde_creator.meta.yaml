@@ -59,6 +59,151 @@ agent_config:
     # Discover CDE Columns was REMOVED in v0.2.0 — see the changelog.
 
 changelog:
+  - version: 0.3.5
+    date: 2026-09-08
+    note: >
+      TRUST FLAGS ARE NOW CHECKED BEFORE A COLUMN IS ATTACHED, ranked above the
+      every-layer instruction. This is the real fix for the 5/5 failure recorded
+      in 0.3.4, and it replaces the prose rule that was tried and reverted there.
+
+      The agent gains a seventh tool, `Fetch Trust Flags`
+      (`tools/fetch_trust_flags.json`). DEPRECATION excludes and the reason is
+      quoted to the human; WARNING is surfaced but does not veto; ENDORSEMENT is
+      treated as evidence for the control_point choice rather than mere
+      permission. Explicitly stated: an unflagged object is NOT thereby endorsed
+      — most objects carry no flags, so silence means unjudged, not approved.
+
+      WHY THIS SHAPE RATHER THAN A TABLE LIST. Noah's call, and it is right: a
+      catalogue's whole purpose is structured metadata, so a governance rule
+      should read a typed field with a mandatory reason, not have a model infer
+      intent from a sentence someone may or may not have written. The reverted
+      prose version had ALSO passed its validation run — while excluding on the
+      `tmp_` name prefix rather than on any declaration, which would have missed
+      a retired table that happened to be named conventionally.
+
+      NO TENANT SPECIFICS IN THE PROMPT. The rule is general and the whole change
+      belongs on origin; every customer warehouse has retired copies.
+
+      TWO MECHANICS THE PROMPT HAS TO STATE, both measured rather than assumed:
+      the tool takes the CONTAINING TABLE's id while Search Catalog returns
+      COLUMN ids, so the agent must resolve the table first — one extra call per
+      candidate table; and `include_propagated` defaults to false, so a schema
+      deprecated as a whole is invisible on its tables unless it is sent true.
+
+      UNVERIFIED AT TIME OF WRITING: no run has exercised this. The prediction
+      from 0.3.4 stands — do-not-use attachment 5/5 -> 0/5, control point holding
+      at 5/5 on column 10196, element count untouched and handled by the invoking
+      message. Note the test is only meaningful once the tables the runs actually
+      reach for are flagged: on gartner2026 only `legacy.customer_exposure_2023`
+      carries a DEPRECATION, and four of the five failing runs attached
+      `finance.tmp_customer_exposure` instead.
+
+  - version: 0.3.4
+    date: 2026-09-08
+    note: >
+      REVERTED — THE PROMPT IS UNCHANGED FROM 0.3.3. This entry records a
+      measurement worth keeping and a design that was tried and rejected, so
+      nobody re-treads it.
+
+      WHAT WAS TRIED: a prose-declaration rule — "exclude any table the catalogue
+      declares unfit for reporting, and read the containing table's description,
+      because the authoritative table often names the copies not to use." It
+      passed its validation run: tmp_customer_exposure excluded, control point
+      held at 10196.
+
+      WHY IT WAS REVERTED ANYWAY, and Noah's call is right: it asks the agent to
+      infer a governance rule from a sentence, in a product whose entire purpose
+      is structured metadata. The validation run proved the objection — the agent
+      excluded on the `tmp_` NAME PREFIX, not on any declaration. It never read
+      the description. Right answer, wrong mechanism, and a name heuristic would
+      not have caught `legacy.customer_exposure_2023`, which is the table the
+      previous batch's Run 4 attached. A rule that passes for a reason other than
+      the one it states is worse than a failing one, because the next tenant
+      inherits the false confidence.
+
+      THE RIGHT MECHANISM IS ALATION'S OWN TRUST FLAGS, not a description and not
+      a custom field. `GET /integration/flag/?oid=<id>&otype=table` returns
+      `flag_type` in {DEPRECATION, WARNING, ENDORSEMENT} with `flag_reason`
+      MANDATORY on the first two — so the declaration is structured, the reason
+      travels with it, and no prose parsing is involved. Flags exist at data
+      source, schema, table AND column level, and `include_propagated=true`
+      returns flags inherited from a parent (`is_propagated` distinguishes them),
+      so deprecating a `legacy` schema once covers every table beneath it.
+      Alation's own best-practice guidance names this exact use — "deprecate data
+      sets that are being decommissioned", and link the preferred dataset in the
+      reason.
+
+      UNVERIFIED, and each needs checking before the prompt changes:
+      (a) whether the base tool `Get Table Trust Flags` (c8ceef74 on
+      gartner2026) wraps this endpoint and what it returns — `tool show
+      "Get Table Trust Flags" --full`;
+      (b) whether the OAuth bearer reaches `/integration/flag/`. The bearer is
+      verified on `/integration/v1/` but this path has no `v1` segment, and the
+      published doc shows only the legacy TOKEN header;
+      (c) whether the tool is worth adding to this agent's tool list at 0.25 ACU
+      per call per candidate table, versus a custom tool which does not meter.
+
+      DEMO NOTE: the script's do-not-say list is right that trust flags are
+      advisory — they warn, they do not block. That is an asset rather than a
+      problem here. "Alation's deprecation flag is advisory by design; we made
+      the agent treat it as binding" is true, is the Open pillar, and gives the
+      red stoplight visible on the table page in Act 1 a payoff in Act 3.
+
+      THE MEASUREMENT THAT STANDS, taken on gartner2026.mtse, N=5, one element
+      (Risk-Weighted Assets) against published standard 283.
+
+      THE FINDING: 5/5 runs attached a table the catalogue had declared do-not-use.
+      Four attached `finance.tmp_customer_exposure`; the fifth excluded it on good
+      reasoning (no medallion tag, no description, no steward) and then attached
+      `legacy.customer_exposure_2023` instead, as "historical as-of date for
+      prior-year reconciliation". So the exclusion instinct exists but was not
+      pointed at governance status — the v0.2.2 medallion instruction ("do not
+      exclude a bronze or silver column merely for being upstream") dominated, as
+      written it should. Nothing outranked it. Now something does.
+
+      WHY IT MATTERS BEYOND CORRECTNESS: on this tenant those two tables are named
+      in the authoritative fact table's own description as copies not to use, and
+      that sentence is Act 1's opening beat in the demo script. An agent attaching
+      them mid-demo contradicts, on screen, a claim the room watched being made
+      fifteen minutes earlier.
+
+      PREDICTION, recorded before the change per prompt-iteration.md: do-not-use
+      attachment goes 5/5 -> 0/5, control-point selection holds at 5/5, and the
+      element-count drift is untouched. If attachment drops but the control point
+      degrades, the rule is too blunt and should be narrowed to declared-status
+      only.
+
+      NOT FIXED HERE, deliberately — element count drifted 1/3/1/1/1. Run 2
+      proposed three elements where the others proposed one, the same N=1
+      instability recorded for policy_author (7 vs 6 on identical runs). Per the
+      standing lesson the fix is to remove the question rather than instruct
+      harder, so this belongs in the invoking message ("create one element for the
+      RWA amount"), not in the prompt.
+
+      ALSO NOT FIXED, and worth a run to characterise: Run 2 reported "Position
+      date column not catalogued" as a genuine catalogue gap. `AS_OF_DATE` exists
+      as column 10157 and three other runs found it. A confident false gap finding
+      about a customer's warehouse is the most damaging output this agent can
+      produce, and it is the same shape as the fabricated citations in v0.3.2 —
+      a plausible artefact generated where a real one was not found.
+
+      MEASURED POSITIVE, and it answers the open question this tenant existed to
+      test: THE VOCABULARY TRANSFER WORKS. gartner2026 spells columns out in full
+      (`RISK_WEIGHTED_ASSET_AMT`, `EXPOSURE_AT_DEFAULT`, `OUTSTANDING_BALANCE`,
+      `AS_OF_DATE`) where this prompt's worked examples teach the abbreviated
+      house style of finance-industry.mtse (`CPTY_ID`, `EXPOSURE_AMT`, RECON, GL,
+      CPTY). All five runs found column 10196 anyway, and 5/5 chose it as the
+      control point. Semantic judgement over search results carried a convention
+      the prompt's examples actively argued against — which is the v0.2.0 bet
+      (agent search beats lexical DATA_MAPPING) holding up on a warehouse nobody
+      tuned it for. The examples were left unchanged: they did no measurable harm
+      and rewriting them per tenant is the per-customer cost this kit exists to
+      avoid.
+
+      Duplicate check: 5/5 found the stranded CANDIDATE (id 19518), correctly
+      explained that an existing CDE cannot have a standard or columns added to it
+      by an agent, and recommended a steward retire it.
+
   - version: 0.3.3
     date: 2026-09-03
     note: >
