@@ -60,3 +60,6 @@ artifacts/*
 # how two specs came to share refs with different titles. The measured result
 # of each prompt version lives in prompts/policy_author.meta.yaml instead.
 policies/*.generated.json
+
+# API response dumps — these carry a real client_id.
+*.raw.json
